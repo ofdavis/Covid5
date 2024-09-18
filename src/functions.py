@@ -538,30 +538,3 @@ def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", s
     # Return the figure
     return fig
 
-
-#------------------------ run --------------------------
-data_path = 'data/covid_long.dta'
-data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
-model, accs, losses, figs = run_model(data_dict, 24, 12, lr=0.05, epochs=1000, seed=41) 
-data_dict = post_data(data_dict, model)
-p = time_graph(data_dict, "retired", pvar="py2", smooth=True)
-p.show()
-p = time_graph(data_dict, "retired", pvar="py2", smooth=False)
-p.show()
-
-time_graph_by(data_dict, "retired", "month", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "mish", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "sex", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "vet", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "nativity", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "diffrem", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "diffphys", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "diffmob", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "race", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "married", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "agegrp_sp", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "child_any", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "child_yng", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "child_adt", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "educ", pvar="py2", smooth=True, test_train="test").show()
-time_graph_by(data_dict, "retired", "metro", pvar="py2", smooth=True, test_train="test").show()
