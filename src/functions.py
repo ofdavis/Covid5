@@ -538,3 +538,8 @@ def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", s
     # Return the figure
     return fig
 
+def out_data(data_dict_in, filename):
+    # export cpsidp, mo, data_type, py, py2 to stata 
+    data_dict_in["data"][["cpsidp", "mo", "data_type", "py", "py2"]].to_stata(f"data/{filename}.dta")
+    print("Data exported to " + f"data/{filename}.dta")
+

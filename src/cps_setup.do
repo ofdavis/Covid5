@@ -570,7 +570,7 @@ compress
 global basic_vars year mo month mish covid statefip wtfinl cpsidp age sex ///
 				  vet diffrem diffphys diffmob  race nativity ///
 				  famsize child_any child_yng child_adt agegrp_sp married ///
-				  agesq agecub educ metro employed retired unem untemp unlose unable nlf_oth pia ur urhat ssa 
+				  agesq agecub educ metro emp employed retired unem untemp unlose unable nlf_oth pia ur urhat ssa 
 
 global work_vars self govt ft absnt hourtop weektop wage wageflag ind_maj occ_maj 
 
