@@ -328,6 +328,30 @@ predict p_employed
 twoway tsline employed p_employed if inrange(mo,mindate,maxdate), xline(`=tm(2020m3)')
 
 
+* -------------------------------------------------------------------------- * 
+* ------------------------ 	collapse retired ------------------------------- * 
+* -------------------------------------------------------------------------- * 
+use hrs_monthly_temp, clear 
+keep if iwdate==mo 
+
+gen forced=inrange(retforce,2,3)
+
+reg retsat c.age##c.age i.mstatf i.gender if wave==13 [pw=wgtr]
+predict retsat_p
+gen retsat2 = retsat-retsat_p  
+
+reg forced c.age##c.age i.mstatf i.gender if wave==13 [pw=wgtr]
+predict forced_p
+gen forced2 = forced-forced_p  
+
+gen n = dead==0 & wgtr>0 & wgtr<.
+
+collapse (mean) retsat retsat2 forced forced2 (sum) n (max) maxmo=mo (min) minmo=mo  [fw=wgtr], by(wave)
+tsset wave 
+tsline retsat
+tsline retsat2
+tsline forced
+tsline forced2
 
 * -------------------------------------------------------------------------- * 
 * ------------------------ 	collapse transitions --------------------------- * 

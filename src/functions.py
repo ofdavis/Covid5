@@ -130,11 +130,14 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     
     exclude_cols = [covidvar, "cpsidp", "wtfinl"]
     Xtn_train_out = torch.tensor(Xdf_train_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_test_out  = torch.tensor(Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_post_out  = torch.tensor(Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
+    Xtn_test_out  = torch.tensor( Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
+    Xtn_post_out  = torch.tensor( Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     ytn_train_out = torch.tensor(ydf_train_out.values).type(torch.float32)
-    ytn_test_out  = torch.tensor(ydf_test_out.values).type(torch.float32)
-    ytn_post_out  = torch.tensor(ydf_post_out.values).type(torch.float32)
+    ytn_test_out  = torch.tensor( ydf_test_out.values).type(torch.float32)
+    ytn_post_out  = torch.tensor( ydf_post_out.values).type(torch.float32)
+    wtn_train_out = torch.tensor(Xdf_train_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
+    wtn_test_out  = torch.tensor( Xdf_test_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
+    wtn_post_out  = torch.tensor( Xdf_post_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
 
     data_dict_out = dict(
         data=data_in,
@@ -152,16 +155,21 @@ def data_setup(path, pred, test_size=0.5, samp=1):
         Xtn_post=Xtn_post_out,
         ytn_train=ytn_train_out,
         ytn_test=ytn_test_out,
-        ytn_post=ytn_post_out 
+        ytn_post=ytn_post_out,
+        wtn_train=wtn_train_out,
+        wtn_test=wtn_test_out,
+        wtn_post=wtn_post_out
     )
     return data_dict_out 
 
 # ------------------------ modeling ---------------------------------
-def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42):
+def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, weight=False):
     Xtn_train_in = data_dict_in["Xtn_train"]
     ytn_train_in = data_dict_in["ytn_train"]
     Xtn_test_in = data_dict_in["Xtn_test"]
     ytn_test_in = data_dict_in["ytn_test"]
+    wtn_train_in = torch.squeeze(data_dict_in["wtn_train"])
+    wtn_test_in = torch.squeeze(data_dict_in["wtn_test"])
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     device
@@ -196,8 +204,16 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42):
     #model_out = model0().to(device)
     model_out = ChurnModel().to(device)
 
-    # Create a loss function
-    loss_fn = nn.BCEWithLogitsLoss() # BCEWithLogitsLoss = sigmoid built-in
+    # define loss function 
+    def loss_fn(y_logits_in, ytn_in, weight_in, wtn_in):
+        if weight_in==False:
+            loss_fn_ = nn.BCEWithLogitsLoss();
+            loss_out = loss_fn_(y_logits_in, ytn_in); # BCEWithLogitsLoss calculates loss using logits
+        else: 
+            loss_fn_ = nn.BCEWithLogitsLoss(reduction='none')
+            loss_0 = loss_fn_(y_logits_in, ytn_in);
+            loss_out   = (wtn_in*loss_0/torch.sum(wtn_in)).sum()
+        return loss_out 
 
     # Create an optimizer
     optimizer = torch.optim.Adam(params=model_out.parameters(), 
@@ -227,8 +243,9 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42):
         y_logits = model_out(Xtn_train_in).squeeze();
         y_pred = torch.round(torch.sigmoid(y_logits)); # logits -> prediction probabilities -> prediction labels
         
-        # 2. Calculate loss and accuracy, append to lists for plots 
-        loss = loss_fn(y_logits, ytn_train_in); # BCEWithLogitsLoss calculates loss using logits
+        # 2. Calculate loss and accuracy, append to lists for plots; depends on whether using weights 
+        loss = loss_fn(y_logits, ytn_train_in, weight, wtn_train_in)
+
         acc = accuracy_fn(y_true=ytn_train_in, 
                           y_pred=y_pred);
         
@@ -255,12 +272,12 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42):
             test_pred = torch.round(torch.sigmoid(test_logits)); # logits -> prediction probabilities -> prediction labels
             
             # 2. Calcuate loss and accuracy
-            test_loss = loss_fn(test_logits, ytn_test_in);
+            test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
             test_acc = accuracy_fn(y_true=ytn_test_in,
                                       y_pred=test_pred);
 
         # Print out what's happening
-        print(f"Epoch: {epoch} | Loss: {loss:.5f}, Accuracy: {acc:.2f}% | Test Loss: {test_loss:.5f}, Test Accuracy: {test_acc:.2f}%")
+        print(f"Epoch: {epoch} | Loss: {loss.item():.5f}, Accuracy: {acc:.2f}% | Test Loss: {test_loss.item():.5f}, Test Accuracy: {test_acc:.2f}%")
         
         #if epoch % 100 == 0:
         #    data_test_post_tmp, data_train_post_tmp = post_data(data_dict_in, model_out)
@@ -271,8 +288,9 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42):
     return model_out, accs_out, losses_out, figdict 
 
 # function for post-testing 
-def post_data(data_dict_in, model_in): 
-    data_in = data_dict_in["data"]
+def post_data(data_dict_in_, model_in, weight=False): 
+    data_dict_in = data_dict_in_.copy()
+    data_in = data_dict_in["data"].copy()
 
     for col in ["data_type","py","yhat","py2","yhat2"]:
         try:
@@ -286,6 +304,7 @@ def post_data(data_dict_in, model_in):
         Xdf = data_dict_in["Xdf_" + d].copy()
         Xtn = data_dict_in["Xtn_" + d]
         ytn = data_dict_in["ytn_" + d]
+        wtn = data_dict_in["wtn_" + d]
 
         Xdf["data_type"] = d
 
@@ -299,8 +318,12 @@ def post_data(data_dict_in, model_in):
 
         if d=="train":
             # Fit Platt scaling (logistic regression on logits)
-            platt_model = LogisticRegression()
-            platt_model.fit(X_logits.reshape(-1, 1), ytn.numpy())
+            platt_model = LogisticRegression(solver = 'lbfgs' )
+            if weight==False:
+                platt_model.fit(X_logits.reshape(-1, 1), ytn.numpy())
+            else: 
+                platt_model.fit(X_logits.reshape(-1, 1), ytn.numpy(), sample_weight=wtn.squeeze().numpy()) 
+                print("weights used")
 
         # Calibrate the predicted probabilities using Platt scaling
         Xdf["py2"] = platt_model.predict_proba(X_logits.reshape(-1, 1))[:, 1]
@@ -314,47 +337,6 @@ def post_data(data_dict_in, model_in):
     data_out = data_in.join(Xdf_to_merge, how="left")
 
     data_dict_in["data"] = data_out
-    return data_dict_in 
-
-def platt(data_dict_in, model_in):
-    try:
-        data_dict_in["data"] = data_dict_in["data"].drop(["py2"], axis=1)
-        print("prior model predictions dropped")
-    except: 
-        pass
-
-    Xdf_out = pd.DataFrame()
-    for d in ["train", "test", "post"]:
-        Xdf = data_dict_in["Xdf_" + d]
-        Xtn = data_dict_in["Xtn_" + d]
-        ytn = data_dict_in["ytn_" + d]
-
-        with torch.no_grad():
-            X_logits = model_in(Xtn).numpy().flatten()  # get logits for validation set   
-
-        if d=="train":
-            # Fit Platt scaling (logistic regression on logits)
-            platt_model = LogisticRegression()
-            platt_model.fit(X_logits.reshape(-1, 1), ytn.numpy())
-
-        # Calibrate the predicted probabilities using Platt scaling
-        probs = platt_model.predict_proba(X_logits.reshape(-1, 1))[:, 1]
-
-        # Add the calibrated probabilities to Xdfs 
-        Xdf["py2"] = probs 
-        Xdf = Xdf[["py2"]]
-
-        Xdf_out = pd.concat([Xdf_out, Xdf])
-
-    # For convenience, define the age groups
-    age_groups = [(50, 59, 0), (60, 69, 1), (70, float('inf'), 2)]
-    data_dict_in["data"]["agegrp"] = pd.cut(data_dict_in["data"]["age"], 
-                                            bins=[g[0] for g in age_groups] + [float('inf')], 
-                                            labels=[g[2] for g in age_groups], 
-                                            include_lowest=True)
-    
-    data_dict_in["data"] = data_dict_in["data"].join(Xdf_out, how="left")
-
     return data_dict_in 
 
 # collapse test/train/predicted data by byvar and plot 
@@ -408,19 +390,22 @@ def coll_graph(data_dict_in, outvar, byvar, pvar="py"):
     return fig
 
 # collapse test/train/predicted data by mo and plot 
-def time_graph(data_dict_in, outvar, pvar="py", smooth=False, diff=False):
+def time_graph(data_dict_in, outvar, pvar="py", smooth=False, diff=False, weight=False):
     df_test_post = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test") | (data_dict_in["data"]["data_type"] == "post")]
     df_train_post = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")]
 
-    coll_test_post = df_test_post.groupby("mo", as_index=False).agg({
-        pvar: 'mean', 
-        f'{outvar}': 'mean'
-    })
-
-    coll_train_post = df_train_post.groupby("mo", as_index=False).agg({
-        pvar: 'mean',
-        f'{outvar}': 'mean'  
-    })
+    if weight==False:
+        coll_test_post = df_test_post.groupby("mo", as_index=False).agg({
+            pvar: 'mean', outvar: 'mean'})
+        coll_train_post = df_train_post.groupby("mo", as_index=False).agg({
+            pvar: 'mean', outvar: 'mean'})
+    else:
+        coll_test_post = df_test_post.groupby("mo", as_index=False).apply(lambda x: pd.Series({
+            pvar:   np.average(x[pvar],   weights=x['wtfinl']),
+            outvar: np.average(x[outvar], weights=x['wtfinl']) }), include_groups=False)
+        coll_train_post = df_train_post.groupby("mo", as_index=False).apply(lambda x: pd.Series({
+            pvar:   np.average(x[pvar],   weights=x['wtfinl']),
+            outvar: np.average(x[outvar], weights=x['wtfinl']), }), include_groups=False)
 
     coll_test_post["diff"]  = coll_test_post[f'{outvar}']  - coll_test_post[pvar] 
     coll_train_post["diff"] = coll_train_post[f'{outvar}'] - coll_train_post[pvar]
@@ -538,8 +523,10 @@ def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", s
     # Return the figure
     return fig
 
-def out_data(data_dict_in, filename):
+def out_data(data_dict_in, suffix, filename):
     # export cpsidp, mo, data_type, py, py2 to stata 
-    data_dict_in["data"][["cpsidp", "mo", "data_type", "py", "py2"]].to_stata(f"data/{filename}.dta")
-    print("Data exported to " + f"data/{filename}.dta")
+    data_out =data_dict_in["data"][["cpsidp", "mo", "data_type", "py", "py2"]]
+    data_out = data_out.rename(columns={"py": f"py_{suffix}", "py2": f"py2_{suffix}"})
+    data_out.to_stata(f"data/generated/{filename}.dta", convert_dates={'mo':'%tm'})
+    print("Data exported to " + f"data/generated/{filename}.dta")
 

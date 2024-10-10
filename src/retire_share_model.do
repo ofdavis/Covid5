@@ -15,22 +15,22 @@ replace race_ = 4 if race==5 // group asian and other // diff from Montes Faria
 gen educ_ = inrange(educ,4,5)
 
 egen demo = group(age_ race_ sex educ_)
-unique demo 
+* unique demo 
 
 
 /*-----------------------------------------------------------------------------
-							Collapse and bring in urate 
+								Collapse 
 -----------------------------------------------------------------------------*/
 
 * collapse 
 gen w = 1 
-collapse (mean) retired age_ educ race_ sex pia urhat (sum) w [fw=round(wtfinl)], by(mo demo)
+collapse (mean) retired age_ educ_ race_ sex pia urhat (sum) w /*[fw=round(wtfinl)]*/, by(mo demo)
 
 gen year = year(dofm(mo))
 
 
 /*-----------------------------------------------------------------------------
-							Regs
+								Regs
 -----------------------------------------------------------------------------*/
 gen retired_p = . 
 gen retired_p2 = . 
@@ -80,14 +80,13 @@ drop ptmp
 frame copy default coll2, replace
 frame change coll2 
 collapse (mean) retired retired_p retired_p2 age_ year [fw=w], by(mo)
-egen retired_py = mean(retired_p), by(year)
-egen retired_py2 = mean(retired_p2), by(year)
-replace retired_py=. if month(dofm(mo))!=8 & mo<`=tm(2023m8)' & mo>`=tm(2000m1)'
-replace retired_py2=. if month(dofm(mo))!=8 & mo<`=tm(2023m8)' & mo>`=tm(2000m1)'
 tsset mo 
-tsline retired retired_py retired_py2,  lpattern(solid dash dash)  ///
+tssmooth ma retired_py = retired_p, window(11 1) 
+tssmooth ma retired_py2 = retired_p2, window(11 1) 
+tssmooth ma retired_ = retired, window(11 1) 
+tsline retired_ retired_py retired_py2,  lpattern(solid dash dash)  ///
 	legend(order(1 "Actual" - "" - "" 2 "Predicted" 3 "Predicted, v2")) ///
-	xlabel(, format(%tmCY)) xtitle("") $covid_line 
+	xlabel(, format(%tmCY)) xtitle("") $covid_line  name(reg, replace)
 
 
 * diff 

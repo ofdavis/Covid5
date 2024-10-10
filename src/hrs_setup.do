@@ -1,5 +1,6 @@
 clear all 
 global path "/Users/owen/Covid5/"
+cd "${path}/data/HRS/raw/sects"
 
 * program to define year, wave letter 
 cap program drop waveyr 
@@ -30,13 +31,12 @@ end
 
 
 * ------------------------------ bring in tracker ------------------------------
-cd "${path}/data/HRS/raw/sects"
 use tracker.dta, clear 
 
 * keep tracker variables desired 
 local keeplist = "birthmo birthyr degree gender race hispanic usborn knowndeceasedmo knowndeceasedyr hhid pn "
 foreach w in p q r s {
-	local keeplist = "`keeplist' " + "`w'age `w'marst `w'couple `w'nurshm `w'iwwave `w'iwmonth `w'iwyear `w'subhh `w'ppn `w'insamp `w'wgtr `w'alive `w'subhh `w'subhhiw"
+	local keeplist = "`keeplist' " + "`w'age `w'marst `w'couple `w'nurshm `w'iwwave `w'iwmonth `w'iwyear `w'subhh `w'ppn `w'insamp `w'wgtr `w'alive `w'subhh `w'subhhiw "
 }
 keep `keeplist'
 
@@ -70,7 +70,7 @@ use rand.dta, clear
 
 local keeplist "hhid pn hhidpn ragender rarace rabplace raeduc r*mstat r*cendiv r*urbrur h*amort h*child h*hhres h*achck h*atotf h*icap h*ahous h*atoth" 
 foreach p in r s {
-	local keeplist = "`keeplist' " + "`p'*agem_m `p'*jhours `p'*slfemp `p'*fsize `p'*union `p'*wgihr `p'*wgiwk `p'*jcoccc `p'*jcindc `p'*jloccc `p'*jlindc `p'*jcten `p'*jcpen `p'*lbrf `p'*samemp `p'*jlastm `p'*jlasty `p'*sayret `p'*retemp `p'*shlt `p'*hltc3 `p'*hibp `p'*diab `p'*cancr `p'*lung `p'*heart"
+	local keeplist = "`keeplist' " + "`p'*agem_m `p'*jhours `p'*slfemp `p'*fsize `p'*union `p'*wgihr `p'*wgiwk `p'*jcoccc `p'*jcindc `p'*jloccc `p'*jlindc `p'*jcten `p'*jcpen `p'*lbrf `p'*samemp `p'*jlastm `p'*jlasty `p'*sayret `p'*rplnya `p'*retemp `p'*shlt `p'*hltc3 `p'*hibp `p'*diab `p'*cancr `p'*lung `p'*heart"
 } 
 keep `keeplist'
 
@@ -875,8 +875,8 @@ forvalues yr=16(2)22 {
 	use H`yr'J3_R, clear 
 	
 	
-	keep hhid pn `w'subhh `w'j3578 `w'j3580 `w'j3581 ///	
-		 `w'j3588_1  `w'j3588_2 `w'j3588_3 `w'j3588_4
+	keep hhid pn `w'subhh `w'j3578 `w'j3580 `w'j3581 `w'j3583 `w'j3584 ///	
+		 `w'j3588_1  `w'j3588_2 `w'j3588_3 `w'j3588_4 
 
 	* say emp 
 	gen r`rw'sayret_ = . 
@@ -890,6 +890,16 @@ forvalues yr=16(2)22 {
 	format r`rw'date_retired2 %tm 
 	label variable r`rw'date_retired2 "date retired (incl partial ret)"
 	
+	* retirement forced or voluntary? 
+	gen r`rw'retforce = `w'j3583  if inrange(`w'j3583,1,3)
+	label define retforce 1 "wanted" 2 "forced" 3 "partly forced"
+	label values r`rw'retforce retforce
+	
+	* satisfied with retirement 
+	gen r`rw'retsat = `w'j3584 if inrange(`w'j3584,1,3) 
+	label define retsat 1 "very" 2 "moderately" 3 "not at all"
+	label values r`rw'retsat retsat	
+	
 	* why retired 
 	gen r`rw'ret_health = `w'j3588_1 if inrange(`w'j3588_1,1,4) 
 	gen r`rw'ret_dothings = `w'j3588_2 if inrange(`w'j3588_2,1,4) 
@@ -898,7 +908,7 @@ forvalues yr=16(2)22 {
 	
 	rename `w'subhh t`rw'subhh
 	
-	keep hhid pn t`rw'subhh r`rw'sayret_ r`rw'date_retired2 r`rw'ret_*
+	keep hhid pn t`rw'subhh r`rw'sayret_ r`rw'date_retired2 r`rw'ret_* r`rw'retforce r`rw'retsat 
 	
 	tempfile temp 
 	save "`temp'"
@@ -1244,7 +1254,7 @@ keep hhid pn wave t_birthmo t_birthyr t_degree t_gender t_hispanic t_race t_usbo
 	 nurshm ppn subhh wgtr hhidpn ragender raracem raeduc rabplace cendiv urbrur ///
 	 hh_numch hh_numad hh_rent hh_hhres hh_child hh_achck hh_ahous hh_amort hh_atoth hh_atotf hh_icap ///
 	 /// date_empchg_flag whyleave whyleave_covid whyleave_btw whyleave_btw_covid whyleave_any whyleave_any_covid ///
-	 btwjob sayret ret_health ret_dothings ret_nowork ret_family ///
+	 btwjob sayret rplnya ret_health ret_dothings ret_nowork ret_family retforce retsat ///
 	 shlt hltc jhours slfemp samemp jcten jcoccc jcindc jloccc jlindc wgihr wgiwk fsize union jcpen /// 
 	 covid_pos covid_concern covwk_affect covwk covwk_stop covwk_event covwk_findnew covwk_howaffect ///
 	 covwk_risk covwk_hard covwk_wfh covwk_ownbiz covwk_ownaffect covwk_ownclose covwk_ownpermclose covid_module
@@ -1287,7 +1297,7 @@ replace nurshm = inlist(nurshm,1,3)
 
 order hhidpn hhid pn ppn subhh wgtr wave gender race bdate foreign educ nurshm cendiv urbrur ///
 	hh_numch hh_numad hh_rent hh_hhres hh_child hh_achck hh_ahous hh_amort hh_atoth hh_atotf hh_icap ///
-	 btwjob  sayret ret_health ret_dothings ret_nowork ret_family ///
+	 btwjob  sayret rplnya ret_health ret_dothings ret_nowork ret_family retforce retsat ///
 	 shlt hltc jhours slfemp samemp jcten jcocc jcind jloccc jlindc wgihr wgiwk fsize union jcpen *
 
 * merge to monthly  
@@ -1627,7 +1637,7 @@ foreach x in rag dag wag {
 }
 
 * ipfraking on the three totals 
-ipfraking if incovid==1 [pw = wgtr], ctotal(rake_rag rake_dag rake_wag) gen(wgtr_c) tol(0.01) // nograph
+ipfraking if incovid==1 [pw = wgtr], ctotal(rake_rag rake_dag rake_wag) gen(wgtr_c) tol(0.01) nograph
 foreach var in gender race age cendiv { 
 	tab `var' [fw=wgtr]
 	tab `var' if incovid==1 [fw=round(wgtr_c)]
