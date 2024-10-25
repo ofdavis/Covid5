@@ -2,19 +2,13 @@ import sys
 import pandas as pd
 import numpy as np 
 from numpy import random 
-from sklearn.datasets import make_circles
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
-import torch
-from torch import nn
-import contextlib
-import io 
-from patsy import dmatrices, dmatrix, demo_data 
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.metrics import accuracy_score, classification_report
-import time 
-import os 
+import matplotlib.pyplot as plt
+from patsy import dmatrices, dmatrix, demo_data 
+import time, os 
 
 # collapse plot 
 def coll_plot(df, byvar: str, ylist: list):
@@ -128,138 +122,169 @@ def coll_graph(df_test_post, df_train_post, byvar):
     # Return the figure
     return fig
 
-"""" ------------------------------------------------------------------------------------------------
-                                       main code 
-------------------------------------------------------------------------------------------------"""
-# data load 
-samp = 1
-data = pd.read_csv('data/covid_ml.csv').sample(frac=samp)
-cols = data.columns
+# program for bringing in and formatting data 
+def data_setup_sk(path, test_size, samp):
+    # data load 
+    data = pd.read_stata(path,convert_dates=True,convert_categoricals=False).sample(frac=samp)
 
-# fix mo 
-data.mo     = pd.DataFrame({"mo" : (data.year - 2010)*12 + data.month.astype("float")}) # months since 2009m12
+    # fix mo 
+    data["modate"]= pd.DataFrame({"modate" : (data.year - 2010)*12 + data.month.astype("float")}) # months since 2009m12
 
-"""
-categorial: 'year', 'month', 'mish', 'statefip', 'race', 'educ', 'agegrp_sp'
-binary: 'sex', 'vet', 'married', 'metro', 'retired', 'disable', 'ssa', 'covid'
-continuous: 'mo', 'age', 'agesq', 'agecub', 'pia', 'ur', 'urhat', 
-other/util: 'wtfinl', 'cpsidp', 
+    """
+    categorical: 'year', 'month', 'mish', 'statefip', 'race', 'educ', 'agegrp_sp'
+    binary: 'sex', 'vet', 'married', 'metro', 'retired', 'diffphys', 'diffmob', 'ssa', 'covid'
+    continuous: 'modate', 'age', 'agesq', 'agecub', 'pia', 'ur', 'urhat', 
+    other/util: 'wtfinl', 'cpsidp', 
 
-interactions: sex:(educ + married + race + agegrp_sp + age), race(educ + married + age),  educ(married + age + pia),     
-"""
+    interactions: sex:(educ + married + race + agegrp_sp + age), race(educ + married + age),  educ(married + age + pia),     
+    """
+    datax = dmatrix(
+        "-1 + C(month) + C(mish) + C(statefip) + C(race) + C(educ) + C(agegrp_sp) + " + 
+        "sex + vet + married + metro + diffmob + diffphys + " + 
+        "cpsidp + wtfinl + covid + retired + " + 
+        "modate + age + agesq + agecub + pia + ssa:pia + urhat + " + 
+        "C(sex):(C(educ) + C(race) + C(agegrp_sp) + married + age) + " + 
+        "C(race):(C(educ) + married + age) + " + 
+        "C(educ):(married + age + pia)",
+        data, return_type="dataframe"
+    )
 
-datax = dmatrix(
-    "-1 + C(month) + C(mish) + C(statefip) + C(race) + C(educ) + C(agegrp_sp) + " + 
-    "sex + vet + married + metro + disable + " + 
-    "cpsidp + covid + retired + " + 
-    "mo + age + agesq + agecub + pia + ssa:pia + " + 
-    "C(sex):(C(educ) + C(race) + C(agegrp_sp) + married + age) + " + 
-    "C(race):(C(educ) + married + age) + " + 
-    "C(educ):(married + age + pia)",
-    data, return_type="dataframe"
-)
-datax.mo.head(10) 
-datax.columns
+    # set up pre and post X and y 
+    Xdf_pre  = datax[datax.covid==0]
+    Xdf_post = datax[datax.covid==1]
+    ydf_pre =  datax[datax.covid==0].retired
+    ydf_post = datax[datax.covid==1].retired
 
-# set up pre and post X and y 
-X_pre  = datax[datax.covid==0].drop(columns=["cpsidp","retired","covid"])
-X_post = datax[datax.covid==1].drop(columns=["cpsidp","retired","covid"])
-y_pre =  datax[datax.covid==0].retired
-y_post = datax[datax.covid==1].retired
+    # split into test and train -- only need to spit pre 
+    Xdf_train, Xdf_test, ydf_train, ydf_test = train_test_split(
+        Xdf_pre, 
+        ydf_pre, 
+        test_size=test_size, # 20% test, 80% train
+        random_state=42) # make the random split reproducible 
+    
+    # assign data groups (test/train/post) to main data 
+    data["data_type"] = np.nan
+    data.loc[data.index.isin(Xdf_train.index), "data_type"] = "train"
+    data.loc[data.index.isin(Xdf_test.index), "data_type"] = "test"
+    data.loc[data.index.isin(Xdf_post.index), "data_type"] = "post"
 
-# split into test and train -- only need to spit pre 
-X_train, X_test, y_train, y_test = train_test_split(
-    X_pre, 
-    y_pre, 
-    test_size=0.2, # 20% test, 80% train
-    random_state=42) # make the random split reproducible 
+    # create weight arrays 
+    wt_train = Xdf_train["wtfinl"].to_numpy(dtype=float).copy()
+    wt_test  = Xdf_test["wtfinl"].to_numpy(dtype=float).copy()
+    wt_post  = Xdf_post["wtfinl"].to_numpy(dtype=float).copy()
 
-# assign data groups (test/train/post) to main data 
-data["train"] = data.index.isin(X_train.index)
-data["test"] = data.index.isin(X_test.index)
-data["post"] = data.index.isin(X_post.index)
+    # drop unneeded columns 
+    Xdf_train = Xdf_train.drop(["cpsidp","covid","retired","wtfinl"], axis=1)
+    Xdf_test  =  Xdf_test.drop(["cpsidp","covid","retired","wtfinl"], axis=1)
+    Xdf_post  =  Xdf_post.drop(["cpsidp","covid","retired","wtfinl"], axis=1)
 
-# standardize variables 
-sc = StandardScaler()
-for i in range(X_pre.shape[1]): # test if binary (even tho all floats)
-    if ((X_train.iloc[:,i]==0) | (X_train.iloc[:,i]==1)).all()==False: 
-        print(f"{X_pre.columns[i]} is not binary")
-        X_train.iloc[:,i] = sc.fit_transform(X_train.iloc[:,i].to_numpy().reshape(-1,1), y=None)
-        X_test.iloc[:,i]  = sc.transform(X_test.iloc[:,i].to_numpy().reshape(-1,1))
-        X_post.iloc[:,i]  = sc.transform(X_post.iloc[:,i].to_numpy().reshape(-1,1))
+    # standardize variables 
+    sc = StandardScaler()
+    for i in range(Xdf_train.shape[1]): # test if binary (even tho all floats)
+        if (((Xdf_train.iloc[:,i]==0) | (Xdf_train.iloc[:,i]==1)).all()==False):  
+            print(f"{Xdf_train.columns[i]} is not binary")
+            Xdf_train.iloc[:,i] = sc.fit_transform(Xdf_train.iloc[:,i].to_numpy().reshape(-1,1), y=None)
+            Xdf_test.iloc[:,i]  = sc.transform(Xdf_test.iloc[:,i].to_numpy().reshape(-1,1))
+            Xdf_post.iloc[:,i]  = sc.transform(Xdf_post.iloc[:,i].to_numpy().reshape(-1,1))
+
+    # preallocate numpy array for X_train, X_test, y_train, y_test 
+    Xnp_train = Xdf_train.to_numpy(dtype=float).copy()
+    Xnp_test  = Xdf_test.to_numpy(dtype=float).copy()
+    Xnp_post  = Xdf_post.to_numpy(dtype=float).copy()
+    ynp_train = ydf_train.to_numpy(dtype=float).copy()
+    ynp_test  = ydf_test.to_numpy(dtype=float).copy()
+    ynp_post  = ydf_post.to_numpy(dtype=float).copy()
+
+    data_dict = {
+        "Xdf_train": Xdf_train,
+        "Xdf_test": Xdf_test,
+        "Xdf_post": Xdf_post,
+        "Xnp_train": Xnp_train,
+        "Xnp_test": Xnp_test,
+        "Xnp_post": Xnp_post,
+        "ydf_train": ydf_train,
+        "ydf_test": ydf_test,
+        "ydf_post": ydf_post,
+        "ynp_train": ynp_train,
+        "ynp_test": ynp_test,
+        "ynp_post": ynp_post,
+        "wt_train": wt_train,
+        "wt_test": wt_test,
+        "wt_post": wt_post,
+        "data": data
+    }
+    return data_dict
+
+
+def run_logistic(data_dict_in, model_dict, model):
+    data_dict_out = data_dict_in.copy() 
+
+    # run model 
+    tic = time.perf_counter()
+    model_dict[model].fit(data_dict_out["Xnp_train"], data_dict_out["ynp_train"], sample_weight=data_dict_out["wt_train"])
+    toc = time.perf_counter()
+    print(f"{model} time: ", toc-tic)
+
+    # get predictions 
+    p_test   = model_dict[model].predict_proba(data_dict_out["Xnp_test"])[:,1]
+    p_train  = model_dict[model].predict_proba(data_dict_out["Xnp_train"])[:,1]
+    p_post   = model_dict[model].predict_proba(data_dict_out["Xnp_post"])[:,1]
+
+    # append to Xs 
+    colname = "py_" + model
+    X_test_tmp = data_dict_out["Xdf_test"].copy()
+    X_test_tmp[colname] = p_test
+    X_test_tmp = X_test_tmp[[colname]]
+
+    X_train_tmp = data_dict_out["Xdf_train"].copy()
+    X_train_tmp[colname] = p_train
+    X_train_tmp = X_train_tmp[[colname]]
+
+    X_post_tmp = data_dict_out["Xdf_post"].copy()
+    X_post_tmp[colname] = p_post
+    X_post_tmp = X_post_tmp[[colname]]
+
+    # append temps 
+    X_temp = pd.concat([X_test_tmp,X_train_tmp,X_post_tmp])
+    data_dict_out["data"] = data_dict_out["data"].join(X_temp, how="left")
+
+    return data_dict_out
+
+
+def out_data_sk(data_dict_in, suffix, filename):
+    # export cpsidp, mo, data_type, py, py2 to stata 
+    outvar = "py_" + suffix
+    data_out =data_dict_in["data"][["cpsidp", "mo", "data_type", outvar]]
+    data_out.to_stata(f"data/generated/{filename}.dta", convert_dates={'mo':'%tm'})
+    print("Data exported to " + f"data/generated/{filename}.dta")
+
+
 
 # Define models 
 num_cores = os.cpu_count()
 mdict = {
     "lr_1sa" : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='saga', penalty="l1"),
     "lr_1ll" : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='liblinear', penalty="l1"),
-    "lr_2sa" : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='saga', penalty="l2"),
+    "lr_2sa" : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='sag', penalty="l2"),
     "lr_2lb" : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='lbfgs', penalty="l2"),
     "lr_e"   : LogisticRegressionCV(cv=3, n_jobs=num_cores, solver='saga', penalty='elasticnet', l1_ratios=[0.1, 0.5, 0.9],max_iter=1000)
 }
 
-# Train the models
-times = []
-for model in ["lr_1sa","lr_1ll","lr_2sa","lr_2lb","lr_e"]: #
-    tic = time.perf_counter()
-    mdict[model].fit(X_train, y_train)
-    toc = time.perf_counter() 
-    times.append(toc-tic)
-    print(model, " time: ", toc-tic)
 
-    # get predictions 
-    p_test   = mdict[model].predict_proba(X_test)[:,1]
-    p_train  = mdict[model].predict_proba(X_train)[:,1]
-    p_post   = mdict[model].predict_proba(X_post)[:,1]
+data_dict_sk = data_setup_sk("data/covid_long.dta", test_size=0.5 , samp=1)
+data_dict_sk = run_logistic(data_dict_sk, mdict, "lr_2lb")
 
-    # append to Xs 
-    colname = "py_" + model
-    X_test_tmp = X_test.copy()
-    X_test_tmp[colname] = p_test
-    X_test_tmp = X_test_tmp[[colname]]
-
-    X_train_tmp = X_train.copy()
-    X_train_tmp[colname] = p_train
-    X_train_tmp = X_train_tmp[[colname]]
-
-    X_post_tmp = X_post.copy()
-    X_post_tmp[colname] = p_post
-    X_post_tmp = X_post_tmp[[colname]]
-
-    # append temps 
-    X_temp = pd.concat([X_test_tmp,X_train_tmp,X_post_tmp])
-    data = data.join(X_temp, how="left")
-times 
-
-# generate plots
-
-p_lr_1sa = coll_plot(data[(data.train==0)], "mo", ["retired","py_lr_1sa","py_lr_1ll","py_lr_2sa","py_lr_2lb"])
-p_lr_1sa.show()
-
-p_lr_1ll = coll_plot(data[(data.train==0) & (data.sex==1)], "mo", ["retired","py_lr_1ll"])
-p_lr_1ll.show()
-
-p_lr_2sa = coll_plot(data[(data.train==0) & (data.sex==1)], "mo", ["retired","py_lr_2lb"])
-p_lr_2sa.show()
-
-p_lr_2lb = coll_plot(data[(data.train==0) & (data.sex==1)], "mo", ["retired","py_lr_2lb"])
+p_lr_2lb = coll_plot(data_dict_sk["data"][(data_dict_sk["data"].data_type=="train") | (data_dict_sk["data"].data_type=="post")], "mo", ["retired","py_lr_2lb"])
 p_lr_2lb.show()
 
-p_lr_e   = coll_plot(data[(data.train==0) & (data.sex==1)], "mo", ["retired","py_lr_e"])
-p_lr_e.show()
-
-#p_lr_e   = coll_plot(data[(data.train==0) & (data.sex==1)], "mo", ["retired","py_lr_e"])
-#p_lr_e.show()
-
-pp = coll_plot_split(data,"race","mo",["retired","py_lr_2lb"])
-pp.show()
-
-# Test the models
-#print("Logistic Regression: {} || Elasticnet: {}".format(logreg_0.score(X_test, y_test), logreg_0.score(X_test, y_test)))
-
-# Print out some more metrics
-#print(classification_report(y_test, logreg_0.predict(X_test)))
-#print(classification_report(y_test, logreg_e.predict(X_test)))
+out_data_sk(data_dict_sk, "lr_2lb", "retired_share_ridge")
 
 
 
+data_dict_e = data_setup_sk("data/covid_long.dta", test_size=0.5 , samp=1)
+data_dict_e = run_logistic(data_dict_e, mdict, "lr_e")
+
+p_lr_2lb = coll_plot(data_dict_e["data"][(data_dict_e["data"].data_type=="train") | (data_dict_e["data"].data_type=="post")], "mo", ["retired","py_lr_e"])
+p_lr_2lb.show()
+
+out_data_sk(data_dict_e, "lr_e", "retired_share_elast")

@@ -934,7 +934,6 @@ forvalues w=13/16{
 
 
 * ----------------------------- reshape long -----------------------------
-
 *keep hhid pn t_birthmo t_birthyr t_degree t_gender t_hispanic t_knowndeceasedmo t_knowndeceasedyr t_race t_usborn t1*
 * rename t* vars 
 forvalues w=13/16 {
@@ -1497,6 +1496,8 @@ drop *_i
 
 
 frame drop fix 
+
+
 * -------------------------------------------------------------------------- * 
 * ------------------------ create spouse data  ----------------------------- * 
 * -------------------------------------------------------------------------- * 
@@ -1555,10 +1556,10 @@ bys hhidpn dead (mo): gen deadmo = _n
 replace deadmo = deadmo*dead
 drop if deadmo>1
 
-* drop if always retired and/or always missing lbrff 
+/* drop if always retired and/or always missing lbrff 
 ever, name(retired_min) condition((lbrff==3 | lbrff==.)) maxmin(min) byvar(hhidpn) svar(mo)
 drop if retired_min==1 
-drop retired_min 
+drop retired_min */
 
 * drop if always dead 
 ever, name(dead_min) condition(dead==1) maxmin(min) byvar(hhidpn) svar(mo)
@@ -1569,7 +1570,6 @@ drop dead_min
 * -------------------------------------------------------------------------- * 
 * --------------------------- finalize  -------------------------------------* 
 * -------------------------------------------------------------------------- * 
-
 gen covid = mo>=`=tm(2020m3)'
 
 * sample indicators -- in wave, working in wave 
@@ -1601,6 +1601,7 @@ drop _merge
 * whether ever had covid, whether in covid group 
 ever, name(covid_any) condition(covid_pos==1) byvar(hhidpn) svar(mo) maxmin(max)
 ever, name(incovid) condition(covid_module==1) byvar(hhidpn) svar(mo) maxmin(max)
+
 
 * -------------------------------------------------------------------------- * 
 * ------------- create sample of covid-survey respondents ----------------------
@@ -1722,6 +1723,21 @@ label define shlt 1 "Excellent" ///
 				  4 "Fair" ///
 				  5 "Poor"
 label values shlt shlt 
+
+* not sure why have to define these again but oh wel 
+label define covwk_event 1 "LOST JOB/LAID OFF PERMANENTLY" ///
+						 2 "FURLOUGHED/LAID OFF TEMPORARILY" ///
+						 3 "QUIT" ///
+						 4 "OTHER" ///
+						 5 "Retired", replace  
+label values covwk_event covwk_event
+
+label define howaffect 1 "HAD TO CHANGE WORK DAYS OR HOURS" ///
+					   2 "WORK BECAME MORE RISKY OR DANGEROUS" ///
+					   3 "WORK BECAME HARDER" ///
+					   4 "SWITCHED TO WORKING FROM HOME OR WORKING REMOTELY" ///
+					   7 "OTHER" , replace  
+label values covwk_howaffect howaffect
 
 * finally finally finalize 
 xtset hhidpn mo 

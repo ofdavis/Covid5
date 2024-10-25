@@ -10,7 +10,7 @@ gen age_ = age
 replace age_=80 if age>=80
 
 gen race_ = race 
-replace race_ = 4 if race==5 // group asian and other // diff from Montes Faria
+replace race_ = 4 if race==5 // group asian and other -- diff from Montes Faria
 
 gen educ_ = inrange(educ,4,5)
 
@@ -24,7 +24,7 @@ egen demo = group(age_ race_ sex educ_)
 
 * collapse 
 gen w = 1 
-collapse (mean) retired age_ educ_ race_ sex pia urhat (sum) w /*[fw=round(wtfinl)]*/, by(mo demo)
+collapse (mean) retired age_ educ_ race_ sex pia urhat (sum) w [fw=round(wtfinl)], by(mo demo)
 
 gen year = year(dofm(mo))
 
@@ -51,14 +51,14 @@ foreach d of local demos {
 	qui predict ptmp if demo==`d'
 	qui replace retired_p = ptmp if demo==`d'
 	
-	* mo squared
+	* 2010+
 	cap drop ptmp 
 	qui sum age_ if demo==`d' 
 	if inrange(r(mean),62,70) { 
-		qui reg retired urhat pia c.mo##c.mo if demo==`d' & mo<`=tm(2020m1)'
+		qui reg retired urhat pia c.mo if demo==`d' & mo<`=tm(2020m1)' & mo>`=tm(2010m1)'
 	}
 	else { 
-		qui reg retired urhat c.mo##c.mo if demo==`d' & mo<`=tm(2020m1)'
+		qui reg retired urhat c.mo if demo==`d' & mo<`=tm(2020m1)' & mo>`=tm(2010m1)'
 	}
 	qui predict ptmp if demo==`d'
 	qui replace retired_p2 = ptmp if demo==`d'
@@ -66,14 +66,14 @@ foreach d of local demos {
 drop ptmp 
 
 * save 
-*save Data/Generated/retire_model, replace
+save data/generated/retire_model_reg_coll, replace
 
 
 /*-----------------------------------------------------------------------------
 							Collapse and graph 
 -----------------------------------------------------------------------------*/
 *frame change default
-*use Data/Generated/retire_model, clear 
+use data/generated/retire_model_reg_coll, clear 
 
 
 * ------------- collapse overall -------------

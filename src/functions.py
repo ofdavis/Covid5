@@ -2,7 +2,6 @@ import sys
 import pandas as pd
 import numpy as np 
 from numpy import random 
-from sklearn.datasets import make_circles
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -15,27 +14,26 @@ from patsy import dmatrices, dmatrix, demo_data
 
 # data load 
 def data_setup(path, pred, test_size=0.5, samp=1):
-    if pred not in ["ER", "UNR", "R"]:
-        raise ValueError("pred must be ER or UNR or R")
+    if pred not in ["ER", "UR", "NR", "RE", "RU", "RN", "R"]:
+        raise ValueError("pred must be ER, UR, NR, RE, RU, RN or R")
     
     data_in = pd.read_stata(path,convert_dates=True,convert_categoricals=False).sample(frac=samp)
-    cols = data_in.columns
-    cols
 
-    # keep only mish4 & employed
-    if pred=="ER":
-        data_in = data_in[(data_in.mish!=4) & (data_in.mish!=8) & (data_in.employed==1) & (data_in.f_retired.notna())]
-    if pred=="UNR":
-        data_in = data_in[(data_in.mish!=4) & (data_in.mish!=8) &  (data_in.retired==0) & (data_in.employed==0) & (data_in.f_retired.notna())]
+    # for transitions (two-char pred), restrict sample 
+    if len(pred)==2:
+        data_in.mo = data_in.f12_mo  # recast mo as outcome mo (f12) if transition
+        if pred[0]=="E":
+            data_in = data_in[(data_in.mish<=4) & (data_in.employed==1) & (data_in.wtf12.notna())]
+        if pred[0]=="U":
+            data_in = data_in[(data_in.mish<=4) & (data_in.unem==1) & (data_in.wtf12.notna())]
+        if pred[0]=="N":
+            data_in = data_in[(data_in.mish<=4) & (data_in.nlf==1) & (data_in.wtf12.notna())]
+        if pred[0]=="R":
+            data_in = data_in[(data_in.mish<=4) & (data_in.retired==1) & (data_in.wtf12.notna())]
+        
     if pred=="R":
         data_in = data_in 
-
-    # test for nans 
-    for c in cols:
-        s = sum(data_in[c].isna())
-        if s>0: 
-            print(s, c, "missing!")
-
+    
     # data setup (one-hot encoding etc) 
     mish     = pd.get_dummies(data_in['mish'], prefix='month')
     month    = pd.get_dummies(data_in['month'], prefix='month')
@@ -47,8 +45,8 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     ind_maj  = pd.get_dummies(data_in['ind_maj'], prefix='ind_maj', dummy_na=True)
     occ_maj  = pd.get_dummies(data_in['occ_maj'], prefix='occ_maj', dummy_na=True)
     sex      = data_in['sex'].astype("bool")
-    covid  = data_in['covid'].astype("bool")
-    f_covid  = data_in['f_covid'].astype("bool")
+    covid    = data_in['covid'].astype("bool")
+    f12_covid = data_in['f12_covid'].astype("bool")
     marr     = data_in['married'].astype("bool")
     ssa      = data_in['ssa'].astype("bool")
     metro    = data_in['metro'].astype("bool")
@@ -56,7 +54,7 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     diffmob  = data_in['diffmob'].astype("bool")
     diffrem  = data_in['diffrem'].astype("bool")
     diffphys = data_in['diffphys'].astype("bool")
-    unem     = data_in['unem'].astype("bool")
+    #unem     = data_in['unem'].astype("bool")
     untemp   = data_in['untemp'].astype("bool")
     unlose   = data_in['unlose'].astype("bool")
     unable   = data_in['unable'].astype("bool")
@@ -68,41 +66,64 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     child_any= data_in['child_any'].astype("bool")
     child_yng= data_in['child_yng'].astype("bool")
     child_adt= data_in['child_adt'].astype("bool")
-    #wageflag = data['wageflag'].astype("bool")
     age      = data_in.age.astype("float")
     agesq    = data_in.agesq.astype("float")
     agecub   = data_in.agecub.astype("float")
+    dur      = data_in.dur.astype("float")
     #wage     = data.wage.astype("float")
-    mo       = pd.DataFrame({"mo" : (data_in.year - 2010)*12 + data_in.month.astype("float")}) # months since 2009m12
+    #wageflag = data['wageflag'].astype("bool")
     pia      = data_in.pia.astype("float")
+    urhat    = data_in.urhat.astype("float")
     ssapia   = pd.DataFrame({"ssapia" :(data_in.pia * data_in.ssa).astype("float")}) 
+    mo       = pd.DataFrame({"mo" : (data_in.year - 2010)*12 + data_in.month.astype("float")}) # months since 2009m12
 
     # create x and y dataframes, pre and post, X and y; for each of the two transitions and the retired outcome 
-    if pred=="ER":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, mish, mo, month, state, race, nativity, sex, educ, f_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, 
+    if pred[0]=="E":
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat, 
                             ind_maj, occ_maj, govt, ft, absnt, self], axis=1) 
-        Xdf_pre_out  = Xdf_out[Xdf_out.f_covid==0]
-        Xdf_post_out = Xdf_out[Xdf_out.f_covid==1]
-        ydf_pre_out =  data_in[data_in.f_covid==0].f_retired
-        ydf_post_out = data_in[data_in.f_covid==1].f_retired
+    if pred[0]=="U":
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat, 
+                            untemp, unlose, dur], axis=1) 
+    if pred[0]=="N":
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat, 
+                            unable, nlf_oth], axis=1) 
+    if pred[0]=="R":
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr, agesp, 
+                            ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat], axis=1) 
+    if pred=="R": # drop uneeded cols if just R predict 
+        Xdf_out = Xdf_out.drop(["wtf12", "f12_covid"], axis=1) 
 
-    if pred=="UNR":  
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, mish, mo, month, state, race, nativity, sex, educ, f_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, 
-                            unem, untemp, unlose, unable, nlf_oth], axis=1) 
-        Xdf_pre_out  = Xdf_out[Xdf_out.f_covid==0]
-        Xdf_post_out = Xdf_out[Xdf_out.f_covid==1]
-        ydf_pre_out =  data_in[data_in.f_covid==0].f_retired
-        ydf_post_out = data_in[data_in.f_covid==1].f_retired
+    # for transitions (two-char pred), define pre/post dataframes
+    if len(pred)==2: 
+        Xdf_pre_out  = Xdf_out[Xdf_out.f12_covid==0]
+        Xdf_post_out = Xdf_out[Xdf_out.f12_covid==1]
 
+        #define transition outcomes         
+        if pred[1]=="R":  
+            ydf_pre_out =  data_in[data_in.f12_covid==0].f12_retired
+            ydf_post_out = data_in[data_in.f12_covid==1].f12_retired
+        if pred[1]=="E":  
+            ydf_pre_out =  data_in[data_in.f12_covid==0].f12_employed
+            ydf_post_out = data_in[data_in.f12_covid==1].f12_employed
+        if pred[1]=="U":  
+            ydf_pre_out =  data_in[data_in.f12_covid==0].f12_unem
+            ydf_post_out = data_in[data_in.f12_covid==1].f12_unem
+        if pred[1]=="N":  
+            ydf_pre_out =  data_in[data_in.f12_covid==0].f12_nlf
+            ydf_post_out = data_in[data_in.f12_covid==1].f12_nlf
+
+    
     if pred=="R":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, mish, mo, month, state, race, nativity, sex, educ, covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia], axis=1) 
         Xdf_pre_out  = Xdf_out[Xdf_out.covid==0]
         Xdf_post_out = Xdf_out[Xdf_out.covid==1]
         ydf_pre_out =  data_in[data_in.covid==0].retired
         ydf_post_out = data_in[data_in.covid==1].retired
+
+    if np.sum(Xdf_out.isnull().sum())>0:
+        print("There are missing values in the data")
 
     # split into test and train -- only need to spit pre 
     Xdf_train_out, Xdf_test_out, ydf_train_out, ydf_test_out = train_test_split(
@@ -110,34 +131,34 @@ def data_setup(path, pred, test_size=0.5, samp=1):
         ydf_pre_out, 
         test_size=test_size, 
         shuffle=False,
-        random_state=40) # make the random split reproducible 
+        random_state=1) # make the random split reproducible 
     
     # standardize variables 
     sc = StandardScaler()
-
     for i in range(Xdf_pre_out.shape[1]):
-        if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["cpsidp","wtfinl"]): 
-            print(f"{i} is not binary")
+        if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["cpsidp","wtfinl","wtf12"]): 
+            #print(f"{i} is not binary")
             Xdf_train_out.iloc[:,i] = sc.fit_transform(Xdf_train_out.iloc[:,i].to_numpy().reshape(-1,1), y=None)
             Xdf_test_out.iloc[:,i]  = sc.transform(Xdf_test_out.iloc[:,i].to_numpy().reshape(-1,1))
             Xdf_post_out.iloc[:,i]  = sc.transform(Xdf_post_out.iloc[:,i].to_numpy().reshape(-1,1))
     
     # turn data to tensors 
     if (pred=="R"): 
-        covidvar="covid"
+        wtvar   ="wtfinl"
+        exclude_cols = ["wtfinl", "cpsidp", "covid"]
     else:
-        covidvar="f_covid"
+        wtvar   ="wtf12"
+        exclude_cols = ["wtfinl", "wtf12", "cpsidp", "covid", "f12_covid"]
     
-    exclude_cols = [covidvar, "cpsidp", "wtfinl"]
     Xtn_train_out = torch.tensor(Xdf_train_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     Xtn_test_out  = torch.tensor( Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     Xtn_post_out  = torch.tensor( Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     ytn_train_out = torch.tensor(ydf_train_out.values).type(torch.float32)
     ytn_test_out  = torch.tensor( ydf_test_out.values).type(torch.float32)
     ytn_post_out  = torch.tensor( ydf_post_out.values).type(torch.float32)
-    wtn_train_out = torch.tensor(Xdf_train_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
-    wtn_test_out  = torch.tensor( Xdf_test_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
-    wtn_post_out  = torch.tensor( Xdf_post_out[["wtfinl"]].to_numpy(dtype=float)).type(torch.float32)
+    wtn_train_out = torch.tensor(Xdf_train_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
+    wtn_test_out  = torch.tensor( Xdf_test_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
+    wtn_post_out  = torch.tensor( Xdf_post_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
 
     data_dict_out = dict(
         data=data_in,
@@ -160,6 +181,7 @@ def data_setup(path, pred, test_size=0.5, samp=1):
         wtn_test=wtn_test_out,
         wtn_post=wtn_post_out
     )
+
     return data_dict_out 
 
 # ------------------------ modeling ---------------------------------
@@ -175,8 +197,6 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, w
     device
     
     num_in = Xtn_train_in.shape[1]
-    #n_hidden1 = 20
-    #n_hidden2 = 10
     class ChurnModel(nn.Module):
         def __init__(self):
             super(ChurnModel, self).__init__()
@@ -473,17 +493,19 @@ def time_graph(data_dict_in, outvar, pvar="py", smooth=False, diff=False, weight
 
 
 # collapse test/train/predicted data by mo and plot 
-def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", smooth=False):
+def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", smooth=False, weight=False):
     if test_train == "test":
         df = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test") | (data_dict_in["data"]["data_type"] == "post")]
     else: 
         df = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")]
 
-    df_coll = df.groupby(["mo",byvar], as_index=False).agg({
-        pvar: 'mean', 
-        f'{outvar}': 'mean'
-    })
-
+    if weight==False:
+        df_coll = df.groupby(["mo",byvar], as_index=False).agg({pvar: 'mean', outvar: 'mean'})
+    else: 
+        df_coll = df.groupby(["mo",byvar], as_index=False).apply(lambda x: pd.Series({
+            pvar:   np.average(x[pvar],   weights=x['wtfinl']),
+            outvar: np.average(x[outvar], weights=x['wtfinl']) }), include_groups=False)
+    
     # create variables that reflect 12-mo average of py, outvar, and diff 
     if smooth:
         for col in [pvar, f'{outvar}']:

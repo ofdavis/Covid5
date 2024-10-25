@@ -1,15 +1,16 @@
 * data setup -- most recent data 2021m9
 clear all 
 cd "/users/owen/Covid5"
+global styear 2000
 
 /* -----------------------------------------------------------------------------
 									get IPUMS CPS data 
  -----------------------------------------------------------------------------
-global start_yr = 2010
+global start_yr = $styear
 global start_mo = 1
 global end_yr = 2024
 global end_mo = 8
-global var_list = "YEAR SERIAL MONTH MISH STATEFIP METRO PERNUM WTFINL CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR UHRSWORK1 AHRSWORK1 WKSTAT ABSENT EDUC EARNWT LNKFW1YWT LNKFW1MWT HOURWAGE2 EARNWEEK2 DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP"
+global var_list = "YEAR SERIAL MONTH MISH STATEFIP METRO PERNUM WTFINL CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR UHRSWORK1 AHRSWORK1 WKSTAT ABSENT EDUC EARNWT LNKFW1YWT LNKFW1MWT HOURWAGE2 EARNWEEK2 DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP"
 
 do "/Applications/Stata/ado/personal/ipums_get.do"
 
@@ -27,7 +28,6 @@ format mo %tm
 
 * covid dummy
 gen covid = mo>=`=tm(2020m4)'
-
 
 /* -----------------------------------------------------------------------------
 									Backcast
@@ -77,6 +77,7 @@ replace wtfinl = round(wtfinl)
 replace earnwt = round(earnwt)
 replace lnkfw1mwt = round(lnkfw1mwt)
 replace lnkfw1ywt = round(lnkfw1ywt)
+
 
 /*----------------------------------------------------------------------------
 								 Spouses
@@ -129,8 +130,9 @@ gen child_any = nchild!=0
 gen child_yng = yngch<=18
 gen child_adt = eldch>=18 & eldch<99
 
-
 tab yngch if nchild>1
+
+drop if empstat==0 // one weird obs in 2002 with most missing 
 
 /*----------------------------------------------------------------------------
 								 Demographic vars 
@@ -138,6 +140,10 @@ tab yngch if nchild>1
 replace sex = sex-1
 label define sex 0 "man" 1 "woman"
 label values sex sex 
+
+* age: make consistent (2002-2004 will not have any 85+)
+replace age = 85 if age>=85
+replace age = 80 if inrange(age,80,84)
 
 gen agesq = age^2
 gen agecub = age^3
@@ -233,11 +239,13 @@ replace emp=1 if empstat==10 | empstat==12 // employed
 replace emp=2 if empstat==21 | empstat==22 // unemployed
 replace emp=3 if empstat==32 | empstat==34 					// not in LF other
 replace emp=4 if empstat==36 // not in LF ret
+drop if emp==. // armed forces
 
 *retired status, employed status
 gen retired = empstat==36
-gen employed = empstat==10 | empstat==12
-gen unem = inrange(empstat, 21, 22)
+gen employed = emp==1
+gen unem = emp==2
+gen nlf = emp==3
 gen unable = empstat==32
 gen nlf_oth = empstat==34 
 gen untemp = whyunemp==1
@@ -255,6 +263,9 @@ gen ft = (wkstat>=10 & wkstat<=15) | wkstat==50
 * absent 
 gen absnt = absent==3 
 
+* duration unemployment 
+gen dur = durunemp if unem==1 
+assert dur<999 if unem==1
 
 /*----------------------------------------------------------------------------
 								Earnings vars 
@@ -280,7 +291,7 @@ gen wageflag = wage>hourtop_ & wage<. & week_only==1
 
 * get cpi 
 frame2 cpi, replace 
-import fred CPIAUCSL, daterange(2010-01-01 2024-08-01) aggregate(monthly)
+import fred CPIAUCSL, daterange(${styear}-01-01 2024-08-01) aggregate(monthly)
 gen mo = ym(year(daten), month(daten))
 format mo %tm
 gen cpi = CPIAUCSL/CPIAUCSL[1]
@@ -296,8 +307,12 @@ drop _merge
 * deflate hourwage 
 replace wage = wage/cpi if wage<.
 
+* create wage quartiles 
+xtile earn_qtr = wage, n(4) 
+
 * clean up 
 drop hourtop_* weektop_* week_only cpi
+
 
 /*----------------------------------------------------------------------------
 							industry and occupation 
@@ -410,8 +425,8 @@ forvalues m=1/12 {
 */ 
 
 frame2 pia, replace 
-set obs 612 // enough for bdates between 1924-1975 
-gen bdate = _n -1 + `=tm(1924m1)'
+set obs 732 // enough for bdates between 1924-1975 
+gen bdate = _n -1 + `=tm(1914m1)'
 format bdate %tm 
 
 * 2. For each birth date, calculate time until/since full retirement age
@@ -446,7 +461,7 @@ format rdate %tm
 * 3. For each possible birth date, calculate PIA 
 * calculate gains 
 gen gain = .
-replace gain = 0.03  if inrange(year(dofm(bdate)),1917, 1924) 
+replace gain = 0.03  if inrange(year(dofm(bdate)),1914, 1924) 
 replace gain = 0.035 if inrange(year(dofm(bdate)),1925, 1926) 
 replace gain = 0.04  if inrange(year(dofm(bdate)),1927, 1928) 
 replace gain = 0.045 if inrange(year(dofm(bdate)),1929, 1930) 
@@ -460,11 +475,13 @@ replace gain = 0.08  if year(dofm(bdate))>=1943
 
 * expand to length of sample -- long enough to get FRA for every possible bdate 
 qui sum rdate 
-local span = r(max) + 36 - `=tm(1989m1)' + 1 
+scalar min = r(min)
+scalar max = r(max)
+local span = max + 36 - min + 1 
 di `span'
 expand `span'
 bys bdate: gen mo = _n
-replace mo = mo - 1 + `=tm(1989m1)'
+replace mo = mo - 1 + min 
 format mo %tm
 
 gen age = floor((mo-bdate)/12)
@@ -504,12 +521,11 @@ drop pia1-pia12
 
 gen ssa = inrange(age,62,69)
 
-
 /*----------------------------------------------------------------------------
 								urates 
   ----------------------------------------------------------------------------*/
 frame2 urate, replace 
-import fred UNRATE, daterange(2010-01-01 2024-08-01) aggregate(monthly) 
+import fred UNRATE, daterange(${styear}-01-01 2024-08-01) aggregate(monthly) 
 gen mo = ym(year(daten),month(daten))
 format mo %tm
 drop date* 
@@ -517,7 +533,7 @@ rename UNRATE ur
 
 * CBO urate 
 frame2 urate2, replace 
-import fred NROU, daterange(2010-01-01 2024-08-01) aggregate(quarterly) 
+import fred NROU, daterange(${styear}-01-01 2024-08-01) aggregate(quarterly) 
 expand 3
 sort daten
 gen month = month(daten)
@@ -557,32 +573,41 @@ assert ur!=.
 ----------------------------------------------------------------------------*/
 * linking 
 xtset cpsidp mo 
-foreach var in employed retired mo covid {
-	gen f_`var' = f.`var'
+foreach var in employed retired unem nlf mo covid {
+	gen f12_`var' = f12.`var'
 }
+format f12_mo %tm
 
+gen wtf12 = lnkfw1ywt 
 
 /*----------------------------------------------------------------------------
 								finalize and save 
   ----------------------------------------------------------------------------*/
 compress
 
-global basic_vars year mo month mish covid statefip wtfinl cpsidp age sex ///
-				  vet diffrem diffphys diffmob  race nativity ///
+global basic_vars year mo month mish covid statefip wtfinl wtf12 cpsidp age sex ///
+				  vet diffrem diffphys diffmob race nativity ///
 				  famsize child_any child_yng child_adt agegrp_sp married ///
-				  agesq agecub educ metro emp employed retired unem untemp unlose unable nlf_oth pia ur urhat ssa 
+				  agesq agecub educ metro emp employed retired unem nlf ///
+				  dur untemp unlose unable nlf_oth pia ur urhat ssa 
 
 global work_vars self govt ft absnt hourtop weektop wage wageflag ind_maj occ_maj 
 
-global long_vars f_employed f_retired f_mo f_covid 
+global long_vars f12_employed f12_retired f12_mo f12_covid f12_unem f12_nlf
 
-* long data 
+* long data from 2010 
+preserve 
 keep $basic_vars $work_vars $long_vars 
+*keep if year>=2010
 save data/covid_long.dta, replace
+restore 
 
-* cross-sect data 
+* cross-sect data from 2000
+preserve 
 keep $basic_vars
 save data/covid_data.dta, replace
+restore 
+
 
 
 
