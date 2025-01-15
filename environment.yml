@@ -1,4 +1,4 @@
-name: /Users/owen/AI_mgmt/envs
+name: /Users/owen/Covid5/env
 channels:
   - conda-forge
   - defaults
@@ -9,8 +9,8 @@ dependencies:
   - brotli-bin=1.0.9=h6c40b1e_8
   - brotli-python=1.0.9=py312hcec6c5f_8
   - bzip2=1.0.8=h6c40b1e_6
-  - ca-certificates=2024.3.11=hecd8cb5_0
-  - certifi=2024.6.2=py312hecd8cb5_0
+  - ca-certificates=2024.11.26=hecd8cb5_0
+  - certifi=2024.12.14=py312hecd8cb5_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - click=8.1.7=py312hecd8cb5_0
   - contourpy=1.2.0=py312ha357a0b_0
@@ -36,6 +36,7 @@ dependencies:
   - libdeflate=1.17=hb664fd8_1
   - libffi=3.4.4=hecd8cb5_1
   - libgfortran=5.0.0=11_3_0_hecd8cb5_28
+  - libgfortran-ng=3.0.1=h93005f0_2
   - libgfortran5=11.3.0=h9dfd629_28
   - libopenblas=0.3.21=h54e7dc3_0
   - libpng=1.6.39=h6c40b1e_0
@@ -54,10 +55,12 @@ dependencies:
   - numexpr=2.8.7=py312h7d6adbd_0
   - numpy=1.26.4=py312h7d6adbd_0
   - numpy-base=1.26.4=py312hbb3573c_0
+  - openblas=0.3.1=hd130d23_0
   - openjpeg=2.4.0=h7231236_1
-  - openssl=3.0.14=h46256e1_0
+  - openssl=3.0.15=h46256e1_0
   - packaging=24.1=py312hecd8cb5_0
   - pandas=2.2.2=py312h77d3abe_0
+  - patsy=0.5.6=py312hecd8cb5_0
   - pillow=10.3.0=py312h6c40b1e_0
   - pip=24.0=py312hecd8cb5_0
   - pybind11-abi=5=hd3eb1b0_0
@@ -98,4 +101,4 @@ dependencies:
   - zstd=1.5.5=hc035e20_2
   - pip:
       - sentence-transformers==3.0.1
-prefix: /Users/owen/AI_mgmt/envs
+prefix: /Users/owen/Covid5/env

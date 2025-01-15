@@ -6,30 +6,30 @@ global styear 2000
 /* -----------------------------------------------------------------------------
 									get IPUMS CPS data 
  -----------------------------------------------------------------------------
-global asec 0
-global bms 1
+global asec 1
+global bms 0
 global start_yr = $styear
-global start_mo = 1
+global start_mo = 3
 global end_yr = 2024
-global end_mo = 8
-global var_list = "YEAR SERIAL MONTH MISH STATEFIP METRO PERNUM WTFINL CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR UHRSWORK1 AHRSWORK1 WKSTAT ABSENT EDUC EARNWT LNKFW1YWT LNKFW1MWT HOURWAGE2 EARNWEEK2 DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP"
+global end_mo = 3
+global var_list = "YEAR SERIAL MONTH  STATEFIP METRO PERNUM ASECFLAG CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR WKSTAT ABSENT EDUC DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP WORKLY IND90LY OCC10LY CLASSWLY WKSWORK1 WKSUNEM1 FULLPART PENSION FIRMSIZE WHYNWLY INCTOT INCSS INCRETIR INCDISAB INCDIVID INCRENT DISABWRK HEALTH QUITSICK PAIDGH HIMCAIDNW HIMCARENW OWNERSHP WHYSS1 WHYSS2"
 
 do "/Applications/Stata/ado/personal/ipums_get.do"
 
-save "data/cps_raw.dta", replace
+assert asecflag==1
+drop asecflag
+save "data/asec_raw.dta", replace
 */
 
-/* -----------------------------------------------------------------------------
-								make date var, other basics 
- ----------------------------------------------------------------------------- */
-use data/cps_raw.dta, clear
-cap drop hwtfinl asecflag  
+use data/asec_raw.dta, clear
+cap drop hwtfinl  
 format cpsidp %15.0f
 gen mo = ym(year,month) 
 format mo %tm
 
 * covid dummy
-gen covid = mo>=`=tm(2020m4)'
+gen covid = mo>=`=tm(2020m3)'
+
 
 /* -----------------------------------------------------------------------------
 									Backcast
@@ -69,16 +69,9 @@ drop _merge
 
 replace ratio_adj=1 if ratio_adj==.
 
-foreach wt in wtfinl earnwt lnkfw1mwt lnkfw1ywt { 
-	replace `wt' = `wt' * ratio_adj 
-}
+replace asecwt = round(asecwt * ratio_adj)
 
 drop ratio_adj agegr
-
-replace wtfinl = round(wtfinl)
-replace earnwt = round(earnwt)
-replace lnkfw1mwt = round(lnkfw1mwt)
-replace lnkfw1ywt = round(lnkfw1ywt)
 
 
 /*----------------------------------------------------------------------------
@@ -134,7 +127,6 @@ gen child_adt = eldch>=18 & eldch<99
 
 tab yngch if nchild>1
 
-drop if empstat==0 // one weird obs in 2002 with most missing 
 
 /*----------------------------------------------------------------------------
 								 Demographic vars 
@@ -190,45 +182,17 @@ replace diffrem = diffrem==2
 replace diffphys = diffphys==2
 replace diffmob = diffmob==2
 
-/* test which diff worth including (rem, phys, mob)
-gen emptmp = inrange(empstat,10,12)
-gen rettmp = empstat==36
-foreach var in diffhear diffeye diffrem diffphys diffmob diffcare {
-	gen `var'_ = `var'==2
-}
-
-reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ [pw=wtfinl], ///
-		absorb(mo mish )
-est sto diffall
-
-foreach var in diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ { 
-	reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		`var' [pw=wtfinl], ///
-		absorb(mo mish )
-	est sto `var'
-}
-esttab diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ diffall
-
-reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		diffrem_ diffphys_ diffmob_  [pw=wtfinl], ///
-		absorb(mo mish )
-est sto diff3
-
-drop emptmp rettmp diff*_
-
-*/ 
+* own house 
+gen own = ownershp==10
 
 * some labeling
-label define mish 1 "MIS 1" 2 "MIS 2" 3 "MIS 3" 4 "MIS 4" 5 "MIS 5" 6 "MIS 6" 7 "MIS 7" 8 "MIS 8"
-label values mish mish 
-
 label define covid_lbl 0 " " 1 "Covid"
 label values covid covid_lbl
 
 label var mo "date"
 
 drop *_cps 
+
 
 
 /*----------------------------------------------------------------------------
@@ -254,9 +218,11 @@ gen unlose = whyunemp==2
 
 * self employed
 gen self = inrange(classwkr, 10, 14)
+gen selfly = inrange(classwly, 10, 14)
 
 * public vs private
 gen govt = inrange(classwkr, 24, 28)
+gen govtly = inrange(classwly, 24, 28)
 
 * full time worker
 gen ft = (wkstat>=10 & wkstat<=15) | wkstat==50
@@ -264,119 +230,166 @@ gen ft = (wkstat>=10 & wkstat<=15) | wkstat==50
 * absent 
 gen absnt = absent==3 
 
-* duration unemployment 
+* duration unemployment -- impute if dur==999 and unem==1 (doesn't happen in CPS, just 70 cases)
 gen dur = durunemp if unem==1 
-assert dur<999 if unem==1
+gen dur_flag = dur==999 & unem==1
+reg durunem i.sex c.age##c.age i.educ i.race i.empstat year if durunem<999
+predict p_dur
+sum dur p_dur if unem==1
+replace dur = p_dur if dur_flag==1
+drop p_dur dur_flag
+
+
 
 /*----------------------------------------------------------------------------
-								Earnings vars 
-------------------------------------------------------------------------------*/
-* tag topcodes 
-bys mo mish: egen hourtop__ = max(hourwage2) if hourwage2<999
-bys mo mish: egen hourtop_ = max(hourtop__) 
-bys mo mish: egen weektop__ = max(earnweek2) if hourwage2<9999
-bys mo mish: egen weektop_ = max(weektop__) 
-gen hourtop = hourwage2==hourtop_
-gen weektop = earnweek2==weektop_
+								ASEC vars 
+  ---------------------------------------------------------------------------- */
+* workly 
+recode workly (1=0) (2=1)
+label define workly 0 "no" 1 "yes"
+label values workly workly
 
-* indicate if only weekly earn vars avail 
-gen week_only = 1 if earnweek2<9999 & hourwage2>999
+* other ly work vars 
+rename wkswork1 wksly 
+gen wksly_lt52 = wksly<52
+gen unemly = inrange(wksunem1,1,51)
 
-* create wage var 
-gen wage = hourwage2 if hourwage2<999
-replace wage = earnweek2/uhrswork1 if week_only==1 & uhrswork1<997
-replace wage = earnweek2/ahrswork1 if week_only==1 & uhrswork1==997
+* disability affecting work
+recode disabwrk (1=0) (2=1)
+label define disabwrk 0 "no" 1 "yes"
+label values disabwrk disabwrk
 
-* indicate if implied hourly>hourtop 
-gen wageflag = wage>hourtop_ & wage<. & week_only==1
+* total income quintiles 
+gen incq = . 
+qui levelsof year, local(years)
+foreach y of local years {
+	di `y'
+	xtile incq_=inctot if year==`y' [fw=asecwt], n(4)
+	replace incq=incq_ if year==`y' 
+	drop incq_
+}
 
-* get cpi 
-frame2 cpi, replace 
-import fred CPIAUCSL, daterange(${styear}-01-01 2024-08-01) aggregate(monthly)
-gen mo = ym(year(daten), month(daten))
-format mo %tm
-gen cpi = CPIAUCSL/CPIAUCSL[1]
-keep mo cpi 
-tempfile cpi 
-save "`cpi'"
-frame change default 
-merge m:1 mo using "`cpi'"
-assert _merge!=1
-drop if _merge==2
-drop _merge
+* indicate if ss income (of at least 1st percentile )
+gen ssinc=0
+qui levelsof year, local(years)
+foreach y of local years {
+	di `y'
+	sum incss if year==`y' & incss>0 [fw=asecwt], d
+	replace ssinc=1 if year==`y' & incss>r(p1)
+}
 
-* deflate hourwage 
-replace wage = wage/cpi if wage<.
+* indicate if non-ss retirement income (of at least 1st percentile )
+gen retinc=0
+qui levelsof year, local(years)
+foreach y of local years {
+	di `y'
+	sum incretir if year==`y' & incretir>0 & incretir<99999999 [fw=asecwt], d
+	replace retinc=1 if year==`y' & incretir>r(p1) & incretir<99999999
+}
 
-* create wage quartiles 
-xtile earn_qtr = wage, n(4) 
+* indicate if divid income (of at least 1st percentile )
+gen divinc=0
+qui levelsof year, local(years)
+foreach y of local years {
+	di `y'
+	sum incdivid if year==`y' & incdivid>0 & incdivid<999999 [fw=asecwt], d
+	replace divinc=1 if year==`y' & incdivid>r(p1) & incdivid<999999
+}
 
-* clean up 
-drop hourtop_* weektop_* week_only cpi
+* indicate if rental income (of at least 1st percentile )
+gen rentinc=0
+qui levelsof year, local(years)
+foreach y of local years {
+	di `y'
+	sum incrent if year==`y' & incrent>0 & incrent<9999999 [fw=asecwt], d
+	replace rentinc=1 if year==`y' & incrent>r(p1) & incrent<9999999
+}
 
+* inc from rent or divid 
+gen incrd = rentinc==1 | divinc==1
+
+* if ss-retirement 
+gen ssret = whyss1==1
+
+
+
+* to ignore for now: himcaidnw himcarenw pension firmsize paidgh quitsick incdisab 
 
 /*----------------------------------------------------------------------------
 							industry and occupation 
   ---------------------------------------------------------------------------- */
 *maj industry grps
-gen ind_maj = .
-replace ind_maj = 1 if  inrange(ind1990, 10, 32)    	// ag etc
-replace ind_maj = 2 if  inrange(ind1990, 40, 50)    	// mining
-replace ind_maj = 3 if  inrange(ind1990, 60, 60)    	// construction
-replace ind_maj = 4 if  inrange(ind1990, 100, 392)   	// manuf
-replace ind_maj = 5 if  inrange(ind1990, 400, 472) 		// trans/util
-replace ind_maj = 6 if  inrange(ind1990, 500, 571)   	// wholesale
-replace ind_maj = 7 if  inrange(ind1990, 580, 691)   	// retail
-replace ind_maj = 8 if  inrange(ind1990, 700, 712)   	// financial
-replace ind_maj = 9 if  inrange(ind1990, 721, 760)   	// biz and repair serv
-replace ind_maj = 10 if inrange(ind1990, 761, 791)   	// personal serv
-replace ind_maj = 11 if inrange(ind1990, 800, 810)   	// entertainment and rec
-replace ind_maj = 12 if inrange(ind1990, 812, 893)   	// prof and related
-replace ind_maj = 13 if inrange(ind1990, 900, 932)   	// public admin
-replace ind_maj = 14 if inrange(ind1990, 940, 998)   	// military
+forvalues ly=0/1 { 
+	if `ly'==0 local s ""
+	if `ly'==0 local y "1990"
+	if `ly'==1 local s "ly"
+	if `ly'==1 local y "90"
+	gen     ind_maj`s' = .
+	replace ind_maj`s' = 1 if  inrange(ind`y'`s', 10, 32)    	// ag etc
+	replace ind_maj`s' = 2 if  inrange(ind`y'`s', 40, 50)    	// mining
+	replace ind_maj`s' = 3 if  inrange(ind`y'`s', 60, 60)    	// construction
+	replace ind_maj`s' = 4 if  inrange(ind`y'`s', 100, 392)   	// manuf
+	replace ind_maj`s' = 5 if  inrange(ind`y'`s', 400, 472) 		// trans/util
+	replace ind_maj`s' = 6 if  inrange(ind`y'`s', 500, 571)   	// wholesale
+	replace ind_maj`s' = 7 if  inrange(ind`y'`s', 580, 691)   	// retail
+	replace ind_maj`s' = 8 if  inrange(ind`y'`s', 700, 712)   	// financial
+	replace ind_maj`s' = 9 if  inrange(ind`y'`s', 721, 760)   	// biz and repair serv
+	replace ind_maj`s' = 10 if inrange(ind`y'`s', 761, 791)   	// personal serv
+	replace ind_maj`s' = 11 if inrange(ind`y'`s', 800, 810)   	// entertainment and rec
+	replace ind_maj`s' = 12 if inrange(ind`y'`s', 812, 893)   	// prof and related
+	replace ind_maj`s' = 13 if inrange(ind`y'`s', 900, 932)   	// public admin
+	replace ind_maj`s' = 14 if inrange(ind`y'`s', 940, 998)   	// military
+}
 
-/*label define ind_maj_lbl 1 "Agriculture and related" ///
+label define ind_maj_lbl 1 "Agriculture and related" ///
 						 2 "Mining, quarrying, and oil and gas extraction" ///
 						 3 "Construction" ///
 						 4 "Manufacturing" ///
-						 5 "Wholesale trade" ///
-						 6 "Retail trade" ///
-						 7 "Transportation and utilities" /// 
-						 8 "Information" ///
-						 9 "Financial activities" ///
-						 10 "Professional and business services" ///
-						 11 "Education and health services" ///
-						 12 "Leisure and hospitality" ///
-						 13 "Other services"  ///
-						 14 "Public administration" 
+						 5 "Transportation and utilities" ///
+						 6 "Wholesale trade" ///
+						 7 "Retail trade" /// 
+						 8 "Financial activities" ///
+						 9 "Business and repair services" ///
+						 10 "Personal services" ///
+						 11 "Entertainment and recreation" ///
+						 12 "Professional and related" ///
+						 13 "Public administration"  ///
+						 14 "Military" 
 
-label values ind_maj ind_maj_lbl */
+label values ind_maj ind_maj_lbl 
+label values ind_majly ind_maj_lbl 
 
 * major occ groups 
-	gen occ_maj=.
-replace occ_maj=1	if	occ2010>=10   & occ2010<=440
-replace occ_maj=2	if	occ2010>=500  & occ2010<=960
-replace occ_maj=3	if	occ2010>=1000 & occ2010<=1240
-replace occ_maj=4	if	occ2010>=1300 & occ2010<=1560
-replace occ_maj=5	if	occ2010>=1600 & occ2010<=1980
-replace occ_maj=6	if	occ2010>=2000 & occ2010<=2060
-replace occ_maj=7	if	occ2010>=2100 & occ2010<=2180
-replace occ_maj=8	if	occ2010>=2200 & occ2010<=2555
-replace occ_maj=9	if	occ2010>=2600 & occ2010<=2960
-replace occ_maj=10	if	occ2010>=3000 & occ2010<=3550
-replace occ_maj=11	if	occ2010>=3600 & occ2010<=3655
-replace occ_maj=12	if	occ2010>=3700 & occ2010<=3960
-replace occ_maj=13	if	occ2010>=4000 & occ2010<=4160
-replace occ_maj=14	if	occ2010>=4200 & occ2010<=4255
-replace occ_maj=15	if	occ2010>=4300 & occ2010<=4655
-replace occ_maj=16	if	occ2010>=4700 & occ2010<=4965
-replace occ_maj=17	if	occ2010>=5000 & occ2010<=5940
-replace occ_maj=18	if	occ2010>=6005 & occ2010<=6130
-replace occ_maj=19	if	occ2010>=6200 & occ2010<=6950
-replace occ_maj=20	if	occ2010>=7000 & occ2010<=7640
-replace occ_maj=21	if	occ2010>=7700 & occ2010<=8990
-replace occ_maj=22	if	occ2010>=9000 & occ2010<=9760
-replace occ_maj=23	if	occ2010>=9830 & occ2010<9999
+forvalues ly=0/1 { 
+	if `ly'==0 local s ""
+	if `ly'==0 local y "2010"
+	if `ly'==1 local s "ly"
+	if `ly'==1 local y "10"
+		gen occ_maj`s'=.
+	replace occ_maj`s'=1	if	inrange(occ`y'`s', 10  , 440 )
+	replace occ_maj`s'=2	if	inrange(occ`y'`s', 500 , 960 )
+	replace occ_maj`s'=3	if	inrange(occ`y'`s', 1000, 1240)
+	replace occ_maj`s'=4	if	inrange(occ`y'`s', 1300, 1560)
+	replace occ_maj`s'=5	if	inrange(occ`y'`s', 1600, 1980)
+	replace occ_maj`s'=6	if	inrange(occ`y'`s', 2000, 2060)
+	replace occ_maj`s'=7	if	inrange(occ`y'`s', 2100, 2180)
+	replace occ_maj`s'=8	if	inrange(occ`y'`s', 2200, 2555)
+	replace occ_maj`s'=9	if	inrange(occ`y'`s', 2600, 2960)
+	replace occ_maj`s'=10	if	inrange(occ`y'`s', 3000, 3550)
+	replace occ_maj`s'=11	if	inrange(occ`y'`s', 3600, 3655)
+	replace occ_maj`s'=12	if	inrange(occ`y'`s', 3700, 3960)
+	replace occ_maj`s'=13	if	inrange(occ`y'`s', 4000, 4160)
+	replace occ_maj`s'=14	if	inrange(occ`y'`s', 4200, 4255)
+	replace occ_maj`s'=15	if	inrange(occ`y'`s', 4300, 4655)
+	replace occ_maj`s'=16	if	inrange(occ`y'`s', 4700, 4965)
+	replace occ_maj`s'=17	if	inrange(occ`y'`s', 5000, 5940)
+	replace occ_maj`s'=18	if	inrange(occ`y'`s', 6005, 6130)
+	replace occ_maj`s'=19	if	inrange(occ`y'`s', 6200, 6950)
+	replace occ_maj`s'=20	if	inrange(occ`y'`s', 7000, 7640)
+	replace occ_maj`s'=21	if	inrange(occ`y'`s', 7700, 8990)
+	replace occ_maj`s'=22	if	inrange(occ`y'`s', 9000, 9760)
+	replace occ_maj`s'=23	if	inrange(occ`y'`s', 9830, 9999)
+}
 
 // value labels
 label define occ_maj_lbl 1 "Management " ///
@@ -403,9 +416,13 @@ label define occ_maj_lbl 1 "Management " ///
 						 22 "Transportation and Material Moving " ///
 						 23 "Armed Forces"
 label values occ_maj occ_maj_lbl
+label values occ_majly occ_maj_lbl
 
 rename occ2010 occ 
 rename ind1990 ind
+
+rename occ10ly occly 
+rename ind90ly indly
 
 
 /*----------------------------------------------------------------------------
@@ -522,6 +539,7 @@ drop pia1-pia12
 
 gen ssa = inrange(age,62,69)
 
+
 /*----------------------------------------------------------------------------
 								urates 
   ----------------------------------------------------------------------------*/
@@ -569,46 +587,21 @@ drop _merge
 
 assert ur!=.
 
-/*----------------------------------------------------------------------------
-								linking
-----------------------------------------------------------------------------*/
-* linking 
-xtset cpsidp mo 
-foreach var in employed retired unem nlf mo covid {
-	gen f12_`var' = f12.`var'
-}
-format f12_mo %tm
-
-gen wtf12 = lnkfw1ywt 
 
 /*----------------------------------------------------------------------------
 								finalize and save 
   ----------------------------------------------------------------------------*/
 compress
 
-global basic_vars year mo month mish covid statefip wtfinl wtf12 cpsidp age sex ///
-				  vet diffrem diffphys diffmob race nativity ///
-				  famsize child_any child_yng child_adt agegrp_sp married ///
-				  agesq agecub educ metro emp employed retired unem nlf ///
-				  dur untemp unlose unable nlf_oth pia ur urhat ssa 
+keep year mo covid statefip asecwt cpsidp age sex ///
+	 vet diffrem diffphys diffmob race nativity ///
+	 famsize child_any child_yng child_adt agegrp_sp married ///
+	 agesq agecub educ metro emp employed retired unem nlf ///
+	 dur untemp unlose unable nlf_oth pia ur urhat ssa ///
+	 own workly wksly wksly_lt52 unemly fullpart selfly govtly ind_majly occ_majly ///
+	 whynwly health incq ssinc retinc ssret incrd 
 
-global work_vars self govt ft absnt hourtop weektop wage wageflag ind_maj occ_maj 
-
-global long_vars f12_employed f12_retired f12_mo f12_covid f12_unem f12_nlf
-
-* long data from 2010 
-preserve 
-keep $basic_vars $work_vars $long_vars 
-*keep if year>=2010
-save data/covid_long.dta, replace
-restore 
-
-* cross-sect data from 2000
-preserve 
-keep $basic_vars
-save data/covid_data.dta, replace
-restore 
-
+save data/asec_data.dta, replace
 
 
 

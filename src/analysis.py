@@ -13,13 +13,12 @@ import contextlib
 import io 
 from patsy import dmatrices, dmatrix, demo_data 
 
-from src.functions import run_model, data_setup, post_data, time_graph, time_graph_by, out_data 
-
+from src.functions import run_model, data_setup, post_data, time_graph, time_graph_by, out_data, data_setup_asec, kfold_cv, update_best_params
 
 #------------------------ cross-section retired predict --------------------------
 data_path = 'data/covid_long.dta'
 data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
-model_w, accs, losses, figs = run_model(data_dict, 24, 12, lr=0.05, epochs=750, seed=40, weight=True)
+model_w, accs, losses, figs = run_model(data_dict, 24, 12, lr=0.05, epochs=500, seed=40, weight=True)
 data_dict_w = post_data(data_dict, model_w, weight=True)
 
 time_graph(data_dict_w, "retired", pvar="py2", smooth=True, weight=True).show()
@@ -28,8 +27,6 @@ time_graph(data_dict_w, "retired", pvar="py2", smooth=False, weight=True).show()
 time_graph_by(data_dict_w, "retired", "diffphys", pvar="py2", smooth=True, test_train="test", weight=True).show()
 
 out_data(data_dict_w,"nn","retired_share_nn")
-
-
 
 for col in data_dict["Xdf"].columns: # determine if any missings in data
     print(col, data_dict["Xdf"][col].isna().sum())
@@ -116,3 +113,39 @@ data_dict = post_data(data_dict, model)
 p = time_graph(data_dict, "retired", pvar="py2", smooth=True, weight=True)
 p.show()
 out_data(data_dict,"nn","retired_share_nn2")
+
+
+# ---------- asec data ------------
+# all workers
+data_path = 'data/asec_data.dta'
+data_dict = data_setup_asec(data_path, pred="R", work_sample="all", test_size=0.2, samp=1)
+results_df, model_results, best_params = kfold_cv(data_dict, 5, [400,600,800], [0.01, 0.05], [16, 24, 32])
+update_best_params("data/generated/best_params.csv", best_params, "asec_all_R")
+
+# workly workers
+data_path = 'data/asec_data.dta'
+data_dict = data_setup_asec(data_path, pred="R", work_sample="workly", test_size=0.2, samp=1)
+results_df, model_results, best_params = kfold_cv(data_dict, 5, [400,600,800], [0.01, 0.05], [16, 24, 32])
+update_best_params("data/generated/best_params.csv", best_params, "asec_workly_R")
+
+# noworkly workers
+data_path = 'data/asec_data.dta'
+data_dict = data_setup_asec(data_path, pred="R", work_sample="noworkly", test_size=0.2, samp=1)
+results_df, model_results, best_params = kfold_cv(data_dict, 5, [400,600,800], [0.01, 0.05], [16, 24, 32])
+update_best_params("data/generated/best_params.csv", best_params, "asec_noworkly_R")
+results_df
+
+
+
+model_w, evals = run_model(data_dict, 
+                           int(best_params["neurons"]), 
+                           int(best_params["neurons"]*0.6), 
+                           lr=best_params["lr"], 
+                           epochs=int(best_params["epochs"]), seed=43, weight=True)
+
+data_dict_w = post_data(data_dict, model_w, weight=True)
+time_graph(data_dict_w, "retired", pvar="py2", smooth=False, weight="asecwt").show()
+time_graph_by(data_dict_w, "retired", "incq", pvar="py2", test_train="test", smooth=False, weight="asecwt").show()
+
+
+
