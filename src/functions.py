@@ -1,19 +1,16 @@
-import sys 
+import sys, os, io, time   
 import pandas as pd
 import numpy as np 
 from numpy import random 
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 import contextlib
-import io 
-from patsy import dmatrices, dmatrix, demo_data 
-from sklearn.model_selection import StratifiedKFold
-import time
-
 # data load 
 def data_setup(path, pred, test_size=0.5, samp=1):
     if pred not in ["ER", "UR", "NR", "RE", "RU", "RN", "R"]:
@@ -325,7 +322,105 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     return data_dict_out 
 
 # ------------------------ modeling ---------------------------------
-def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, weight=False):
+def run_model2(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, 
+               weight=False, batch_size=128, report_every=100):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(seed)
+
+    Xtn_train_in = data_dict_in["Xtn_train"].to(device)
+    ytn_train_in = data_dict_in["ytn_train"].to(device)
+    Xtn_test_in = data_dict_in["Xtn_test"].to(device)
+    ytn_test_in = data_dict_in["ytn_test"].to(device)
+    wtn_train_in = torch.squeeze(data_dict_in["wtn_train"]).to(device)
+    wtn_test_in = torch.squeeze(data_dict_in["wtn_test"]).to(device)
+
+    train_dataset = TensorDataset(Xtn_train_in, ytn_train_in, wtn_train_in)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=os.cpu_count()-2)
+
+    class ChurnModel(nn.Module):
+        def __init__(self):
+            super(ChurnModel, self).__init__()
+            self.layer_1 = nn.Linear(Xtn_train_in.shape[1], n_hidden1)
+            self.layer_2 = nn.Linear(n_hidden1, n_hidden2)
+            self.layer_out = nn.Linear(n_hidden2, 1)
+            self.relu = nn.ReLU()
+            self.dropout = nn.Dropout(p=0.1)
+            self.batchnorm1 = nn.BatchNorm1d(n_hidden1)
+            self.batchnorm2 = nn.BatchNorm1d(n_hidden2)
+
+        def forward(self, inputs):
+            x = self.relu(self.layer_1(inputs))
+            x = self.batchnorm1(x)
+            x = self.relu(self.layer_2(x))
+            x = self.batchnorm2(x)
+            x = self.dropout(x)
+            x = self.layer_out(x)
+            return x
+
+    model_out = ChurnModel().to(device)
+
+    def loss_fn(y_logits_in, ytn_in, weight_in, wtn_in):
+        y_logits_in = torch.squeeze(y_logits_in)
+        ytn_in = torch.squeeze(ytn_in)
+        wtn_in = torch.squeeze(wtn_in)
+        if weight_in == False:
+            loss_fn_ = nn.BCEWithLogitsLoss()
+            loss_out = loss_fn_(y_logits_in, ytn_in)
+        else:
+            loss_fn_ = nn.BCEWithLogitsLoss(reduction='none')
+            loss_0 = loss_fn_(y_logits_in, ytn_in)
+            loss_out = (wtn_in * loss_0 / torch.sum(wtn_in)).sum()
+        return loss_out
+
+    def f1_fn(y_true, y_pred):
+        tp = (y_true * y_pred).sum().to(torch.float32)
+        fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+        fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+
+        precision = tp / (tp + fp + 1e-8)
+        recall = tp / (tp + fn + 1e-8)
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
+        return 1 - f1
+
+
+    optimizer = torch.optim.Adam(params=model_out.parameters(), lr=lr)
+
+    train_losses = []
+    for epoch in range(epochs):
+        model_out.train()
+        for batch_X, batch_y, batch_w in train_loader:
+            optimizer.zero_grad()
+            y_logits = model_out(batch_X)
+            loss = loss_fn(y_logits, batch_y, weight, batch_w)
+            loss.backward()
+            optimizer.step()
+            train_losses.append(loss.item())
+
+        if (epoch+1) % report_every == 0:
+            model_out.eval()
+            with torch.no_grad():
+                test_logits = model_out(Xtn_test_in).squeeze();
+                test_pred = torch.round(torch.sigmoid(test_logits)); 
+                print(test_logits.shape, test_pred.shape)
+                test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
+                test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
+                print(f"Epoch: {epoch+1} | Avg loss: {np.mean(train_losses):.5f}, F1: TK | Test Loss: {test_loss.item():.5f}, Test F1: {test_f1:.3f}")
+        
+        train_losses = []
+    
+    model_out.eval()
+    with torch.no_grad():
+        test_logits = model_out(Xtn_test_in).squeeze();
+        test_pred = torch.round(torch.sigmoid(test_logits)); 
+        print(test_logits.shape, test_pred.shape)
+        test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
+        test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
+
+    evals = {"loss_test": test_loss.item(), "f1_test": test_f1.item()}
+    return model_out, evals
+
+
+def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, weight=False, report_every=100):
     Xtn_train_in = data_dict_in["Xtn_train"]
     ytn_train_in = data_dict_in["ytn_train"]
     Xtn_test_in = data_dict_in["Xtn_test"]
@@ -375,12 +470,10 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, w
         return loss_out 
 
     # Create an optimizer
-    optimizer = torch.optim.Adam(params=model_out.parameters(), 
-                                lr=lr)
+    optimizer = torch.optim.Adam(params=model_out.parameters(), lr=lr)
 
     def f1_fn(y_true, y_pred):
         tp = (y_true * y_pred).sum().to(torch.float32)
-        tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
         fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
         fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
 
@@ -388,6 +481,7 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, w
         recall = tp / (tp + fn + 1e-8)
         f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
         return 1 - f1
+    
     #--------------- TEST AND TRAIN LOOP -------------------
     torch.manual_seed(seed)
     
@@ -398,47 +492,33 @@ def run_model(data_dict_in, n_hidden1, n_hidden2, lr=0.1, epochs=500, seed=42, w
     Xtn_train_in, ytn_train_in = Xtn_train_in.to(device), ytn_train_in.to(device)
     Xtn_test_in,  ytn_test_in =  Xtn_test_in.to(device),  ytn_test_in.to(device)
 
-    # Build training and evaluation loop
-    f1s_out = [] 
-    losses_out = []
+    # Training and evaluation loop
     for epoch in range(epochs):
-        # 1. Forward pass
+        # Forward pass
         y_logits = model_out(Xtn_train_in).squeeze();
         y_pred = torch.round(torch.sigmoid(y_logits)); # logits -> prediction probabilities -> prediction labels
         
-        # 2. Calculate loss and f1, append to lists for plots; depends on whether using weights 
+        # Calculate loss and f1, append to lists for plots; depends on whether using weights 
         loss = loss_fn(y_logits, ytn_train_in, weight, wtn_train_in)
         f1  = f1_fn(y_true=ytn_train_in, y_pred=y_pred);
         
-        f1s_out.append(f1);
-        losses_out.append(loss.item());
-        
-        # 3. Optimizer zero grad
+        # Optimizer zero grad, backward loss, optimizer
         optimizer.zero_grad();
-
-        # 4. Loss backward
         loss.backward();
-
-        # 5. Optimizer step
         optimizer.step();
 
-        ### Testing
+        ### Test data 
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             model_out.eval()
-        
         with torch.inference_mode():
-            # 1. Forward pass
             test_logits = model_out(Xtn_test_in).squeeze();
             test_pred = torch.round(torch.sigmoid(test_logits)); # logits -> prediction probabilities -> prediction labels
-            
-            # 2. Calcuate loss and accuracy
             test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
-            test_f1 = f1_fn(y_true=ytn_test_in,
-                                      y_pred=test_pred);
+            test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
 
         # Print out what's happening
-        if (epoch+1) % 100 == 0:
+        if (epoch+1) % report_every == 0:
             print(f"Epoch: {epoch+1} | Loss: {loss.item():.5f}, F1: {f1:.3f} | Test Loss: {test_loss.item():.5f}, Test F1: {test_f1:.3f}")
     
     evals = {"f1_train": f1.item(), "loss_train": loss.item(), "f1_test": test_f1.item(), "loss_test": test_loss.item()}
@@ -767,3 +847,9 @@ def out_data(data_dict_in, suffix, filename):
     data_out = data_out.rename(columns={"py": f"py_{suffix}", "py2": f"py2_{suffix}"})
     data_out.to_stata(f"data/generated/{filename}.dta", convert_dates={'mo':'%tm'})
     print("Data exported to " + f"data/generated/{filename}.dta")
+
+
+
+
+
+
