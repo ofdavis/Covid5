@@ -24,7 +24,7 @@ save "data/cps_raw.dta", replace
  ----------------------------------------------------------------------------- */
 use data/cps_raw.dta, clear
 cap drop hwtfinl asecflag  
-format cpsidp %15.0f
+format cpsidp %15.n
 gen mo = ym(year,month) 
 format mo %tm
 
@@ -610,6 +610,13 @@ save data/covid_data.dta, replace
 restore 
 
 
-
-
-
+* one obs per cpsidp 
+use data/covid_long.dta, clear 
+unique cpsidp
+gen rand = runiform()
+bys cpsidp: egen rank = rank(rand)
+sort cpsidp mo
+br cpsidp rand rank
+keep if rank==1
+unique cpsidp
+save data/covid_long_reduced.dta, replace
