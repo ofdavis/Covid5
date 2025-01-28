@@ -12,7 +12,7 @@ global start_yr = $styear
 global start_mo = 3
 global end_yr = 2024
 global end_mo = 3
-global var_list = "YEAR SERIAL MONTH  STATEFIP METRO PERNUM ASECFLAG CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR WKSTAT ABSENT EDUC DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP WORKLY IND90LY OCC10LY CLASSWLY WKSWORK1 WKSUNEM1 FULLPART PENSION FIRMSIZE WHYNWLY INCTOT INCSS INCRETIR INCDISAB INCDIVID INCRENT DISABWRK HEALTH QUITSICK PAIDGH HIMCAIDNW HIMCARENW OWNERSHP WHYSS1 WHYSS2"
+global var_list = "YEAR SERIAL MONTH COUNTY MARBASECIDP STATEFIP METRO PERNUM ASECFLAG CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR WKSTAT ABSENT EDUC DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP WORKLY IND90LY OCC10LY CLASSWLY WKSWORK1 WKSUNEM1 FULLPART PENSION FIRMSIZE WHYNWLY INCTOT INCSS INCRETIR INCDISAB INCDIVID INCRENT DISABWRK HEALTH QUITSICK PAIDGH HIMCAIDNW HIMCARENW OWNERSHP WHYSS1 WHYSS2"
 
 do "/Applications/Stata/ado/personal/ipums_get.do"
 
@@ -23,7 +23,8 @@ save "data/asec_raw.dta", replace
 
 use data/asec_raw.dta, clear
 cap drop hwtfinl  
-format cpsidp %15.0f
+rename marbasecidp asecidp 
+format asecidp %15.0f
 gen mo = ym(year,month) 
 format mo %tm
 
@@ -593,7 +594,7 @@ assert ur!=.
   ----------------------------------------------------------------------------*/
 compress
 
-keep year mo covid statefip asecwt cpsidp age sex ///
+keep year mo covid county statefip asecwt asecidp age sex ///
 	 vet diffrem diffphys diffmob race nativity ///
 	 famsize child_any child_yng child_adt agegrp_sp married ///
 	 agesq agecub educ metro emp employed retired unem nlf ///
@@ -601,7 +602,7 @@ keep year mo covid statefip asecwt cpsidp age sex ///
 	 own workly wksly wksly_lt52 unemly fullpart selfly govtly ind_majly occ_majly ///
 	 whynwly health incq ssinc retinc ssret incrd 
 
-save data/asec_data.dta, replace
+save data/generated/asec_data.dta, replace
 
 
 

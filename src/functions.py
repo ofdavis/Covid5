@@ -53,9 +53,9 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     ssa      = data_in['ssa'].astype("bool")
     metro    = data_in['metro'].astype("bool")
     vet      = data_in['vet'].astype("bool")
-    diffmob  = data_in['diffmob'].astype("bool")
-    diffrem  = data_in['diffrem'].astype("bool")
-    diffphys = data_in['diffphys'].astype("bool")
+    #diffmob  = data_in['diffmob'].astype("bool")
+    #diffrem  = data_in['diffrem'].astype("bool")
+    #diffphys = data_in['diffphys'].astype("bool")
     #unem     = data_in['unem'].astype("bool")
     untemp   = data_in['untemp'].astype("bool")
     unlose   = data_in['unlose'].astype("bool")
@@ -82,19 +82,19 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     # create x and y dataframes, pre and post, X and y; for each of the two transitions and the retired outcome
     if pred[0]=="E":
         Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
                             ind_maj, occ_maj, govt, ft, absnt, self], axis=1)
     if pred[0]=="U":
         Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
                             untemp, unlose, dur], axis=1)
     if pred[0]=="N":
         Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat,
+                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
                             unable, nlf_oth], axis=1)
     if pred[0]=="R":
         Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr, agesp,
-                            ssa, metro, child_any, child_yng, child_adt, vet, diffmob, diffrem, diffphys, age, agesq, agecub, pia, ssapia, urhat], axis=1)
+                            ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat], axis=1)
     if pred=="R": # drop uneeded cols if just R predict
         Xdf_out = Xdf_out.drop(["wtf12", "f12_covid"], axis=1)
 
@@ -219,9 +219,9 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     ssa      = data_in['ssa'].astype("bool")
     metro    = data_in['metro'].astype("bool")
     vet      = data_in['vet'].astype("bool")
-    diffmob  = data_in['diffmob'].astype("bool")
-    diffrem  = data_in['diffrem'].astype("bool")
-    diffphys = data_in['diffphys'].astype("bool")
+    #diffmob  = data_in['diffmob'].astype("bool")
+    #diffrem  = data_in['diffrem'].astype("bool")
+    #diffphys = data_in['diffphys'].astype("bool")
     selfly   = data_in['selfly'].astype("bool")
     govtly   = data_in['govtly'].astype("bool")
     child_any= data_in['child_any'].astype("bool")
@@ -245,21 +245,21 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     #
     # create x and y dataframes, pre and post, X and y; for each of the two transitions and the retired outcome
     if work_sample=="all":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.asecwt, state, race, nativity, educ, agesp,
+        Xdf_out = pd.concat([data_in.asecidp, data_in.asecwt, state, race, nativity, educ, agesp,
                             health, sex, covid, marr, ssa, metro, vet,
-                            diffmob, diffrem, diffphys, child_any, child_yng, child_adt,
+                            child_any, child_yng, child_adt,
                             own, incrd, year, age, agesq, agecub, pia, urhat, ssapia, mo], axis=1)
     elif work_sample=="workly":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.asecwt, state, race, nativity, educ, agesp,
+        Xdf_out = pd.concat([data_in.asecidp, data_in.asecwt, state, race, nativity, educ, agesp,
                             health, sex, covid, marr, ssa, metro, vet,
-                            diffmob, diffrem, diffphys, child_any, child_yng, child_adt,
+                            child_any, child_yng, child_adt,
                             own, incrd, year, age, agesq, agecub, pia, urhat, ssapia, mo,
                             ind_majly, occ_majly, selfly, govtly, wksly, # this row and below workly
                             unemly, ssinc, retinc, incq, fullpart], axis=1)
     elif work_sample=="noworkly":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.asecwt, state, race, nativity, educ, agesp,
+        Xdf_out = pd.concat([data_in.asecidp, data_in.asecwt, state, race, nativity, educ, agesp,
                             health, sex, covid, marr, ssa, metro, vet,
-                            diffmob, diffrem, diffphys, child_any, child_yng, child_adt,
+                            child_any, child_yng, child_adt,
                             own, incrd, year, age, agesq, agecub, pia, urhat, ssapia, mo,
                             whynwly], axis=1)
     #
@@ -282,14 +282,14 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     # standardize variables
     sc = StandardScaler()
     for i in range(Xdf_pre_out.shape[1]):
-        if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["cpsidp","asecwt"]):
+        if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["asecidp","asecwt"]):
             #print(f"{i} is not binary")
             Xdf_train_out.iloc[:,i] = sc.fit_transform(Xdf_train_out.iloc[:,i].to_numpy().reshape(-1,1), y=None)
             Xdf_test_out.iloc[:,i]  = sc.transform(Xdf_test_out.iloc[:,i].to_numpy().reshape(-1,1))
             Xdf_post_out.iloc[:,i]  = sc.transform(Xdf_post_out.iloc[:,i].to_numpy().reshape(-1,1))
     #
     # turn data to tensors
-    exclude_cols = ["asecwt", "cpsidp", "covid"]
+    exclude_cols = ["asecwt", "asecidp", "covid"]
     Xtn_train_out = torch.tensor(Xdf_train_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     Xtn_test_out  = torch.tensor( Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
     Xtn_post_out  = torch.tensor( Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
@@ -550,7 +550,6 @@ def kfold_cv(model_in, data_dict_in, k, kwargs_var_in, kwargs_const_in={}, path=
     skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
 
     results = []
-    #model_results = {}
 
     # Generate all possible combinations of parameter values
     param_names  = kwargs_var_in.keys()
@@ -626,16 +625,19 @@ def kfold_cv(model_in, data_dict_in, k, kwargs_var_in, kwargs_const_in={}, path=
                 result_df = result_df.drop_duplicates()
             result_df.to_csv(path, index=False)
 
-        #model_results[tuple(kwargs_all.values())] = model
-
-    results_df = pd.DataFrame(results)
-    results_df["model"] = model_in.__name__
-    best_params = results_df.loc[results_df['avg_f1'].idxmin()]
-    for col in ["epochs", "n_hidden1", "n_hidden2"]:
-        try:
-            best_params[col] = int(best_params[col])
-        except:
-            pass
+    if len(results)>0:
+        results_df = pd.DataFrame(results)
+        results_df["model"] = model_in.__name__
+        best_params = results_df.loc[results_df['avg_f1'].idxmin()]
+        for col in ["epochs", "n_hidden1", "n_hidden2"]:
+            try:
+                best_params[col] = int(best_params[col])
+            except:
+                pass
+    else: 
+        results_df = pd.DataFrame()
+        best_params = None
+        print("Nothing run because all parameter combinations already exist in the results file.")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -904,10 +906,16 @@ def update_best_params(path, best_params_in, model_name):
     df = df[['model_name'] + [col for col in df.columns if col != 'model_name']]
     df.to_csv(path, index=False)
 
-def out_data(data_dict_in, suffix, filename):
+def out_data(data_dict_in, suffix, path):
     # export cpsidp, mo, data_type, py, py2 to stata
-    data_out =data_dict_in["data"][["cpsidp", "mo", "data_type", "py", "py2"]]
-    data_out = data_out.rename(columns={"py": f"py_{suffix}", "py2": f"py2_{suffix}"})
-    data_out.to_stata(f"data/generated/{filename}.dta", convert_dates={'mo':'%tm'})
-    print("Data exported to " + f"data/generated/{filename}.dta")
+    if "cpsidp" in data_dict_in["data"].columns:
+        idvar = "cpsidp"
+    elif "asecidp" in data_dict_in["data"].columns:
+        idvar = "asecidp"
+    else:
+        raise ValueError("Neither 'cpsidp' nor 'asecidp' found in data_dict_in['data'].columns")
+    data_out =data_dict_in["data"][[idvar, "mo", "data_type", "py2"]]
+    data_out = data_out.rename(columns={"py2": f"p_{suffix}"})
+    data_out.to_stata(f"{path}.dta", convert_dates={'mo':'%tm'}, write_index=False)
+    print("Data exported to " + f"{path}.dta")
     

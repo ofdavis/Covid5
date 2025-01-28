@@ -11,8 +11,8 @@ global bms 1
 global start_yr = $styear
 global start_mo = 1
 global end_yr = 2024
-global end_mo = 8
-global var_list = "YEAR SERIAL MONTH MISH STATEFIP METRO PERNUM WTFINL CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR UHRSWORK1 AHRSWORK1 WKSTAT ABSENT EDUC EARNWT LNKFW1YWT LNKFW1MWT HOURWAGE2 EARNWEEK2 DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP"
+global end_mo = 12
+global var_list = "YEAR SERIAL MONTH MISH COUNTY STATEFIP METRO PERNUM WTFINL CPSIDP AGE SEX RACE MARST HISPAN NATIVITY EMPSTAT LABFORCE OCC2010 IND1990 CLASSWKR UHRSWORK1 AHRSWORK1 WKSTAT ABSENT EDUC EARNWT LNKFW1YWT LNKFW1MWT HOURWAGE2 EARNWEEK2 DIFFANY DIFFHEAR DIFFEYE DIFFREM DIFFPHYS DIFFMOB DIFFCARE VETSTAT SPLOC HRHHID FAMSIZE NCHILD ELDCH YNGCH WHYUNEMP DURUNEMP"
 
 do "/Applications/Stata/ado/personal/ipums_get.do"
 
@@ -24,7 +24,7 @@ save "data/cps_raw.dta", replace
  ----------------------------------------------------------------------------- */
 use data/cps_raw.dta, clear
 cap drop hwtfinl asecflag  
-format cpsidp %15.n
+format cpsidp %15.0f
 gen mo = ym(year,month) 
 format mo %tm
 
@@ -119,7 +119,7 @@ replace agegrp_sp = 55 if inrange(age, 15, 59) & married==1 & agegrp_sp==.
 replace agegrp_sp = 60 if inrange(age, 60, 61) & married==1 & agegrp_sp==.
 replace agegrp_sp = 62 if inrange(age, 62, 64) & married==1 & agegrp_sp==.
 replace agegrp_sp = 65 if inrange(age, 65, 69) & married==1 & agegrp_sp==.
-replace agegrp_sp = 70 if inrange(age, 70, 85) & married==1 & agegrp_sp==.
+replace agegrp_sp = 70 if inrange(age, 70, 90) & married==1 & agegrp_sp==.
 
 * create a separate category agegrp_sp=0 for these
 replace agegrp_sp = 0 if married==0
@@ -170,6 +170,12 @@ rename ethnic race
 * native 
 tab nativity
 recode nativity (0=3) (1=0) (2/4=1) (5=2)
+label define nativity 0 "native-born, both parents" 1 "native-born, foreign parent(s)" 2 "foreign-born" 3 "unknown"
+label values nativity nativity
+
+gen foreign = inrange(nativity,2,3)
+label define foreign 0 "native-born" 1 "foreign-born", replace
+label values foreign foreign
 
 * metro area
 rename metro metro_cps
@@ -292,7 +298,7 @@ gen wageflag = wage>hourtop_ & wage<. & week_only==1
 
 * get cpi 
 frame2 cpi, replace 
-import fred CPIAUCSL, daterange(${styear}-01-01 2024-08-01) aggregate(monthly)
+import fred CPIAUCSL, daterange(${styear}-01-01 2024-12-01) aggregate(monthly)
 gen mo = ym(year(daten), month(daten))
 format mo %tm
 gen cpi = CPIAUCSL/CPIAUCSL[1]
@@ -526,7 +532,7 @@ gen ssa = inrange(age,62,69)
 								urates 
   ----------------------------------------------------------------------------*/
 frame2 urate, replace 
-import fred UNRATE, daterange(${styear}-01-01 2024-08-01) aggregate(monthly) 
+import fred UNRATE, daterange(${styear}-01-01 2024-12-01) aggregate(monthly) 
 gen mo = ym(year(daten),month(daten))
 format mo %tm
 drop date* 
@@ -534,7 +540,7 @@ rename UNRATE ur
 
 * CBO urate 
 frame2 urate2, replace 
-import fred NROU, daterange(${styear}-01-01 2024-08-01) aggregate(quarterly) 
+import fred NROU, daterange(${styear}-01-01 2024-12-01) aggregate(quarterly) 
 expand 3
 sort daten
 gen month = month(daten)
@@ -586,8 +592,8 @@ gen wtf12 = lnkfw1ywt
   ----------------------------------------------------------------------------*/
 compress
 
-global basic_vars year mo month mish covid statefip wtfinl wtf12 cpsidp age sex ///
-				  vet diffrem diffphys diffmob race nativity ///
+global basic_vars year mo month mish covid county statefip wtfinl wtf12 cpsidp age sex ///
+				  vet diffrem diffphys diffmob race nativity foreign ///
 				  famsize child_any child_yng child_adt agegrp_sp married ///
 				  agesq agecub educ metro emp employed retired unem nlf ///
 				  dur untemp unlose unable nlf_oth pia ur urhat ssa 
@@ -600,17 +606,17 @@ global long_vars f12_employed f12_retired f12_mo f12_covid f12_unem f12_nlf
 preserve 
 keep $basic_vars $work_vars $long_vars 
 *keep if year>=2010
-save data/covid_long.dta, replace
+save data/generated/cps_data.dta, replace
 restore 
 
-* cross-sect data from 2000
+/* cross-sect data from 2000
 preserve 
 keep $basic_vars
 save data/covid_data.dta, replace
-restore 
+restore */ 
 
 
-* one obs per cpsidp 
+/* one obs per cpsidp 
 use data/covid_long.dta, clear 
 unique cpsidp
 gen rand = runiform()
@@ -620,3 +626,4 @@ br cpsidp rand rank
 keep if rank==1
 unique cpsidp
 save data/covid_long_reduced.dta, replace
+*/
