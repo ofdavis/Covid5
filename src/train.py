@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, Dataset
 import contextlib
 
 from src.functions import data_setup, data_setup_asec, full_model, full_model, kfold_cv
-from src.functions import post_data, time_graph, time_graph_by, out_data, update_best_params
+from src.functions import post_data, time_graph, time_graph_by, out_data, out_data_boot, update_best_params
 
 ## Structure for each retirement transition 
 # Bring in data 
@@ -50,6 +50,20 @@ data_dict = post_data(data_dict, model)
 
 # save results  
 out_data(data_dict, "retired", "data/generated/pred_cps_R")
+
+# bootstrap to quantify uncertainty 
+data_path = 'data/generated/cps_data.dta'
+data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
+best_params_df = pd.read_csv("data/generated/cv_cps_R.csv")
+best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
+for key in ["avg_loss","avg_f1","model"]:
+    best_params.pop(key)
+
+for i in range(50):
+    print(f"============= bootstrap iteration {i} ================")
+    model, evals = full_model(data_dict, **best_params, seed=42, weight=True, bootstrap=True)
+    data_dict = post_data(data_dict, model)
+    out_data_boot(data_dict, "retired",  "data/generated/pred_cps_R_boot", i) 
 
 
 #------------------------ CPS: Loop through transitions --------------------------
@@ -106,5 +120,21 @@ data_dict = post_data(data_dict, model)
 # save results  
 out_data(data_dict, "retired", "data/generated/pred_asec_R")
 
-time_graph(data_dict,    "retired", pvar="py2", smooth=False, weight="asecwt").show()
-time_graph_by(data_dict, "retired", "own", pvar="py2", smooth=False, weight="asecwt").show()
+# bootstrap to quantify uncertainty 
+data_path = 'data/generated/asec_data.dta'
+data_dict = data_setup_asec(data_path, pred="R", test_size=0.2, samp=1)
+best_params_df = pd.read_csv("data/generated/cv_asec_R.csv")
+best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
+for key in ["avg_loss","avg_f1","model"]:
+    best_params.pop(key)
+
+for i in range(50):
+    print(f"============= bootstrap iteration {i} ================")
+    model, evals = full_model(data_dict, **best_params, seed=42, weight=True, bootstrap=True)
+    data_dict = post_data(data_dict, model)
+    out_data_boot(data_dict, "retired",  "data/generated/pred_asec_R_boot", i) 
+
+
+
+
+#  ------------- testing ----------------

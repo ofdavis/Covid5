@@ -46,7 +46,7 @@ replace ethnic=2 if race==200  & ethnic==.
 replace ethnic=4 if race==651  & ethnic==. 
 replace ethnic=5 if inlist(race, 300, 650) & ethnic==. 
 replace ethnic=5 if inrange(race, 652, 830) & ethnic==. 
-label define ethniclab 1 "white" 2 "Black" 4 "Asian" 5 "other" 6 "Hispanic" , replace
+label define ethniclab 1 "White" 2 "Black" 4 "Asian" 5 "Other" 6 "Hispanic" , replace
 label values ethnic ethniclab
 
 * Age Groups
@@ -81,6 +81,9 @@ drop ratio_adj agegr
 * Marital status 
 gen married = 0
 replace married = 1 if marst==1
+label variable married "Marital status"
+label define married 0  "Unmarried" 1 "Married" 
+label values married married
 
 * Create new frame to make and merge back in spouse data 
 frame copy default spouse, replace
@@ -126,6 +129,14 @@ gen child_any = nchild!=0
 gen child_yng = yngch<=18
 gen child_adt = eldch>=18 & eldch<99
 
+label variable child_any "Own child in house"
+label variable child_yng "Own young child in house"
+label variable child_adt "Own adult child in house"
+label define yesno 0 "No" 1 "Yes"
+label values child_any yesno 
+label values child_yng yesno 
+label values child_adt yesno 
+
 tab yngch if nchild>1
 
 
@@ -133,7 +144,7 @@ tab yngch if nchild>1
 								 Demographic vars 
   ----------------------------------------------------------------------------*/
 replace sex = sex-1
-label define sex 0 "man" 1 "woman"
+label define sex 0 "Men" 1 "Women"
 label values sex sex 
 
 * age: make consistent (2002-2004 will not have any 85+)
@@ -150,23 +161,35 @@ replace educ_ = 2 if inrange(educ,81,110)
 replace educ_ = 3 if educ==111
 replace educ_ = 4 if inrange(educ,112,125)
 
-label define educ 0 "less than hs" 1 "hs" 2 "some college" 3 "bachelor" 4 "advanced"
+label define educ 0 "Less than high school" 1 "High school degree" 2 "Some college" 3 "Bachelor's degree" 4 "Advanced degree", replace 
 label values educ_ educ
 
 drop educ
 rename educ_ educ
+label variable educ "Education"
 
 * race
 drop race 
 rename ethnic race
+label variable race "Race/ethnicity"
 
 * native 
 tab nativity
 recode nativity (0=3) (1=0) (2/4=1) (5=2)
+label define nativity 0 "Native-born, both parents" 1 "Native-born, foreign parent(s)" 2 "Foreign-born" 3 "Unknown"
+label values nativity nativity
+
+gen foreign = inrange(nativity,2,3)
+label variable foreign "Nationality"
+label define foreign 0 "Native-born" 1 "Foreign-born", replace
+label values foreign foreign
 
 * metro area
 rename metro metro_cps
 gen metro = inrange(metro_cps, 2, 4)
+label variable metro "Metro status"
+label define metro 0 "Rural" 1 "Metro"
+label values metro metro 
 
 * veteran 
 tab vetstat
@@ -174,6 +197,8 @@ replace vetstat=0 if vetstat==1
 replace vetstat=1 if vetstat==2
 rename vetstat vet
 label drop vetstat_lbl 
+label define vet 0 "Not a veteran" 1 "Veteran"
+label values vet vet 
 
 * disability 
 gen disable = 0 
@@ -275,7 +300,7 @@ gen ssinc=0
 qui levelsof year, local(years)
 foreach y of local years {
 	di `y'
-	sum incss if year==`y' & incss>0 [fw=asecwt], d
+	qui sum incss if year==`y' & incss>0 [fw=asecwt], d
 	replace ssinc=1 if year==`y' & incss>r(p1)
 }
 
@@ -284,7 +309,7 @@ gen retinc=0
 qui levelsof year, local(years)
 foreach y of local years {
 	di `y'
-	sum incretir if year==`y' & incretir>0 & incretir<99999999 [fw=asecwt], d
+	qui sum incretir if year==`y' & incretir>0 & incretir<99999999 [fw=asecwt], d
 	replace retinc=1 if year==`y' & incretir>r(p1) & incretir<99999999
 }
 
@@ -293,7 +318,7 @@ gen divinc=0
 qui levelsof year, local(years)
 foreach y of local years {
 	di `y'
-	sum incdivid if year==`y' & incdivid>0 & incdivid<999999 [fw=asecwt], d
+	qui sum incdivid if year==`y' & incdivid>0 & incdivid<999999 [fw=asecwt], d
 	replace divinc=1 if year==`y' & incdivid>r(p1) & incdivid<999999
 }
 
@@ -302,7 +327,7 @@ gen rentinc=0
 qui levelsof year, local(years)
 foreach y of local years {
 	di `y'
-	sum incrent if year==`y' & incrent>0 & incrent<9999999 [fw=asecwt], d
+	qui sum incrent if year==`y' & incrent>0 & incrent<9999999 [fw=asecwt], d
 	replace rentinc=1 if year==`y' & incrent>r(p1) & incrent<9999999
 }
 
@@ -595,7 +620,7 @@ assert ur!=.
 compress
 
 keep year mo covid county statefip asecwt asecidp age sex ///
-	 vet diffrem diffphys diffmob race nativity ///
+	 vet diffrem diffphys diffmob race nativity foreign ///
 	 famsize child_any child_yng child_adt agegrp_sp married ///
 	 agesq agecub educ metro emp employed retired unem nlf ///
 	 dur untemp unlose unable nlf_oth pia ur urhat ssa ///

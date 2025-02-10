@@ -45,7 +45,7 @@ replace ethnic=2 if race==200  & ethnic==.
 replace ethnic=4 if race==651  & ethnic==. 
 replace ethnic=5 if inlist(race, 300, 650) & ethnic==. 
 replace ethnic=5 if inrange(race, 652, 830) & ethnic==. 
-label define ethniclab 1 "white" 2 "Black" 4 "Asian" 5 "other" 6 "Hispanic" , replace
+label define ethniclab 1 "White" 2 "Black" 4 "Asian" 5 "Other" 6 "Hispanic" , replace
 label values ethnic ethniclab
 
 * Age Groups
@@ -87,6 +87,9 @@ replace lnkfw1ywt = round(lnkfw1ywt)
 * Marital status 
 gen married = 0
 replace married = 1 if marst==1
+label variable married "Marital status"
+label define married 0  "Unmarried" 1 "Married" 
+label values married married
 
 * Create new frame to make and merge back in spouse data 
 frame copy default spouse, replace
@@ -132,6 +135,14 @@ gen child_any = nchild!=0
 gen child_yng = yngch<=18
 gen child_adt = eldch>=18 & eldch<99
 
+label variable child_any "Own child in house"
+label variable child_yng "Own young child in house"
+label variable child_adt "Own adult child in house"
+label define yesno 0 "No" 1 "Yes"
+label values child_any yesno 
+label values child_yng yesno 
+label values child_adt yesno 
+
 tab yngch if nchild>1
 
 drop if empstat==0 // one weird obs in 2002 with most missing 
@@ -140,7 +151,7 @@ drop if empstat==0 // one weird obs in 2002 with most missing
 								 Demographic vars 
   ----------------------------------------------------------------------------*/
 replace sex = sex-1
-label define sex 0 "man" 1 "woman"
+label define sex 0 "Men" 1 "Women"
 label values sex sex 
 
 * age: make consistent (2002-2004 will not have any 85+)
@@ -157,29 +168,35 @@ replace educ_ = 2 if inrange(educ,81,110)
 replace educ_ = 3 if educ==111
 replace educ_ = 4 if inrange(educ,112,125)
 
-label define educ 0 "less than hs" 1 "hs" 2 "some college" 3 "bachelor" 4 "advanced"
+label define educ 0 "Less than high school" 1 "High school degree" 2 "Some college" 3 "Bachelor's degree" 4 "Advanced degree", replace 
 label values educ_ educ
 
 drop educ
 rename educ_ educ
+label variable educ "Education"
 
 * race
 drop race 
 rename ethnic race
+label variable race "Race/ethnicity"
 
 * native 
 tab nativity
 recode nativity (0=3) (1=0) (2/4=1) (5=2)
-label define nativity 0 "native-born, both parents" 1 "native-born, foreign parent(s)" 2 "foreign-born" 3 "unknown"
+label define nativity 0 "Native-born, both parents" 1 "Native-born, foreign parent(s)" 2 "Foreign-born" 3 "Unknown"
 label values nativity nativity
 
 gen foreign = inrange(nativity,2,3)
-label define foreign 0 "native-born" 1 "foreign-born", replace
+label variable foreign "Nationality"
+label define foreign 0 "Native-born" 1 "Foreign-born", replace
 label values foreign foreign
 
 * metro area
 rename metro metro_cps
 gen metro = inrange(metro_cps, 2, 4)
+label variable metro "Metro status"
+label define metro 0 "Rural" 1 "Metro"
+label values metro metro 
 
 * veteran 
 tab vetstat
@@ -187,6 +204,8 @@ replace vetstat=0 if vetstat==1
 replace vetstat=1 if vetstat==2
 rename vetstat vet
 label drop vetstat_lbl 
+label define vet 0 "Not a veteran" 1 "Veteran"
+label values vet vet 
 
 * disability 
 gen disable = 0 
@@ -195,35 +214,6 @@ replace disable=1 if diffany==2
 replace diffrem = diffrem==2
 replace diffphys = diffphys==2
 replace diffmob = diffmob==2
-
-/* test which diff worth including (rem, phys, mob)
-gen emptmp = inrange(empstat,10,12)
-gen rettmp = empstat==36
-foreach var in diffhear diffeye diffrem diffphys diffmob diffcare {
-	gen `var'_ = `var'==2
-}
-
-reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ [pw=wtfinl], ///
-		absorb(mo mish )
-est sto diffall
-
-foreach var in diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ { 
-	reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		`var' [pw=wtfinl], ///
-		absorb(mo mish )
-	est sto `var'
-}
-esttab diffhear_ diffeye_ diffrem_ diffphys_ diffmob_ diffcare_ diffall
-
-reghdfe emptmp age agesq agecub i.educ i.race i.metro vet married i.agegrp_sp child_any child_adt child_yng /// 
-		diffrem_ diffphys_ diffmob_  [pw=wtfinl], ///
-		absorb(mo mish )
-est sto diff3
-
-drop emptmp rettmp diff*_
-
-*/ 
 
 * some labeling
 label define mish 1 "MIS 1" 2 "MIS 2" 3 "MIS 3" 4 "MIS 4" 5 "MIS 5" 6 "MIS 6" 7 "MIS 7" 8 "MIS 8"
@@ -317,8 +307,11 @@ replace wage = wage/cpi if wage<.
 * create wage quartiles 
 xtile earn_qtr = wage, n(4) 
 
+
 * clean up 
 drop hourtop_* weektop_* week_only cpi
+
+
 
 
 /*----------------------------------------------------------------------------
@@ -341,22 +334,21 @@ replace ind_maj = 12 if inrange(ind1990, 812, 893)   	// prof and related
 replace ind_maj = 13 if inrange(ind1990, 900, 932)   	// public admin
 replace ind_maj = 14 if inrange(ind1990, 940, 998)   	// military
 
-/*label define ind_maj_lbl 1 "Agriculture and related" ///
-						 2 "Mining, quarrying, and oil and gas extraction" ///
-						 3 "Construction" ///
-						 4 "Manufacturing" ///
-						 5 "Wholesale trade" ///
-						 6 "Retail trade" ///
-						 7 "Transportation and utilities" /// 
-						 8 "Information" ///
-						 9 "Financial activities" ///
-						 10 "Professional and business services" ///
-						 11 "Education and health services" ///
-						 12 "Leisure and hospitality" ///
-						 13 "Other services"  ///
-						 14 "Public administration" 
-
-label values ind_maj ind_maj_lbl */
+label define ind_maj_lbl 1 "Agriculture and related" ///
+						   2 "Mining" ///
+						   3 "Construction" ///
+						   4 "Manufacturing" ///
+						   5 "Transportation and utilities" /// 
+						   6 "Wholesale trade" ///
+						   7 "Retail trade" ///
+						   8 "Financial activities" ///
+						   9 "Business and repair services" /// 
+						   10 "Personal services" ///
+						   11 "Entertainment and recreational services" ///
+						   12 "Professional and related services" ///
+						   13 "Public administration"  ///
+						   14 "Military" , replace
+label values ind_maj ind_maj_lbl 
 
 * major occ groups 
 	gen occ_maj=.
@@ -413,6 +405,39 @@ label values occ_maj occ_maj_lbl
 rename occ2010 occ 
 rename ind1990 ind
 
+
+*-------------------------- ind-occ avg wages ----------------------------------
+egen ind_occ = group(ind occ)
+bys ind_occ: gen io_n = _N
+*bys ind_maj occ: gen imo_n = _N
+*bys ind occ_maj: gen iom_n = _N
+egen tagio = tag(ind occ) 
+*egen tagimo = tag(ind_maj occ) 
+*egen tagiom = tag(ind occ_maj) 
+gsort -io_n
+*br ind_maj occ_maj ind_occ io_n imo_n iom_n if tagio==1
+
+
+*windorize wage 
+bys ind_occ: egen wage_io_p01 = pctile(wage), p(1)
+bys ind_occ: egen wage_io_p99 = pctile(wage), p(99)
+gen wage_w = wage 
+replace wage_w = wage_io_p01 if wage_w<wage_io_p01
+replace wage_w = wage_io_p99 if wage_w>wage_io_p99 & wage_w<.
+
+* average winsorized wage 
+bys ind_occ: egen wage_io = mean(wage) 
+
+* reg wage prediction 
+reg wage i.ind i.occ if wage<. & occ<9999 & ind!=0
+predict wage_io_p 
+gen diff = wage_io-wage_io_p
+gsort -diff
+twoway scatter wage_io wage_io_p if tagio==1 & io_n>50
+
+replace wage_io = wage_io_p if io_n<150
+gen lwage_io = log(wage_io)
+sum wage_io, d 
 
 /*----------------------------------------------------------------------------
 								Social security PIA 
@@ -598,7 +623,7 @@ global basic_vars year mo month mish covid county statefip wtfinl wtf12 cpsidp a
 				  agesq agecub educ metro emp employed retired unem nlf ///
 				  dur untemp unlose unable nlf_oth pia ur urhat ssa 
 
-global work_vars self govt ft absnt hourtop weektop wage wageflag ind_maj occ_maj 
+global work_vars self govt ft absnt hourtop weektop wage wage_io lwage_io wageflag ind_maj occ_maj 
 
 global long_vars f12_employed f12_retired f12_mo f12_covid f12_unem f12_nlf
 

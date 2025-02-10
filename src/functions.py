@@ -12,8 +12,6 @@ from torch import nn
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-# from src.define_class import CustomDataset  # Import the CustomDataset class
-
 # data load
 def data_setup(path, pred, test_size=0.5, samp=1):
     if pred not in ["ER", "UR", "NR", "RE", "RU", "RN", "R"]:
@@ -432,15 +430,24 @@ def batch_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42,
     return model_out, evals
 
 
-
-def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=False, report_every=100):
+def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=False, report_every=100, bootstrap=False):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    Xtn_train_in = data_dict_in["Xtn_train"].to(device)
-    ytn_train_in = data_dict_in["ytn_train"].to(device)
+    # create bootstrap index if bootstrapping and use this for training tensors; else just bring in training tensors 
+    if bootstrap==True:
+        n = data_dict_in["Xtn_train"].size(0)
+        idx = np.random.choice(range(n), n, replace=True)
+        Xtn_train_in = data_dict_in["Xtn_train"][idx].to(device)
+        ytn_train_in = data_dict_in["ytn_train"][idx].to(device)
+        wtn_train_in = torch.squeeze(data_dict_in["wtn_train"])[idx].to(device)
+    
+    else: 
+        Xtn_train_in = data_dict_in["Xtn_train"].to(device)
+        ytn_train_in = data_dict_in["ytn_train"].to(device)
+        wtn_train_in = torch.squeeze(data_dict_in["wtn_train"]).to(device)
+    
     Xtn_test_in = data_dict_in["Xtn_test"].to(device)
     ytn_test_in = data_dict_in["ytn_test"].to(device)
-    wtn_train_in = torch.squeeze(data_dict_in["wtn_train"]).to(device)
     wtn_test_in = torch.squeeze(data_dict_in["wtn_test"]).to(device)
 
     n_hidden2 = int(0.6*n_hidden1)
@@ -914,8 +921,39 @@ def out_data(data_dict_in, suffix, path):
         idvar = "asecidp"
     else:
         raise ValueError("Neither 'cpsidp' nor 'asecidp' found in data_dict_in['data'].columns")
-    data_out =data_dict_in["data"][[idvar, "mo", "data_type", "py2"]]
+    data_out = data_dict_in["data"][[idvar, "mo", "data_type", "py2"]]
     data_out = data_out.rename(columns={"py2": f"p_{suffix}"})
     data_out.to_stata(f"{path}.dta", convert_dates={'mo':'%tm'}, write_index=False)
     print("Data exported to " + f"{path}.dta")
+    
+
+def out_data_boot(data_dict_in, suffix, path, num_boot):
+    suffix_out = suffix + "_" + str(num_boot)
+
+    # check for id var, either CPS or ASEC 
+    if "cpsidp" in data_dict_in["data"].columns:
+        idvar = "cpsidp"
+    elif "asecidp" in data_dict_in["data"].columns:
+        idvar = "asecidp"
+    else:
+        raise ValueError("Neither 'cpsidp' nor 'asecidp' found in data_dict_in['data'].columns")
+    
+    # check if path exists 
+    if os.path.exists(f"{path}.dta")==False:
+        data_out = data_dict_in["data"][[idvar, "mo", "data_type", "py2"]]
+        data_out = data_out.rename(columns={"py2": f"p_{suffix_out}"})
+        data_out.to_stata(f"{path}.dta", convert_dates={'mo':'%tm'}, write_index=False)
+        print("Data exported to " + f"{path}.dta")
+
+    else:
+        prev_results = pd.read_stata(f"{path}.dta", convert_dates=True)
+        data_out_pre = data_dict_in["data"][[idvar, "mo", "py2"]]
+        data_out_pre = data_out_pre.rename(columns={"py2": f"p_{suffix_out}"})
+        data_out = prev_results.merge(data_out_pre, on=["mo", idvar], how="left")
+        data_out.to_stata(f"{path}.dta", convert_dates={'mo':'%tm'}, write_index=False)
+        print("Data joined to prior file and exported to " + f"{path}.dta")
+
+
+
+
     
