@@ -1,3 +1,4 @@
+# %% 
 import sys, os, io, time   
 import pandas as pd
 import numpy as np 
@@ -25,9 +26,9 @@ from src.functions import post_data, time_graph, time_graph_by, out_data, out_da
 ## CPS 
 # R, ER, RE, UR, RU, NR, RN 
 ## ASEC
-# R (all, workly, noworkly)
+# R 
 
-#------------------------ CPS: Cross-section retired predict --------------------------
+# %%------------------------ CPS: Cross-section retired predict --------------------------
 # load data 
 data_path = 'data/generated/cps_data.dta'
 data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
@@ -66,7 +67,7 @@ for i in range(50):
     out_data_boot(data_dict, "retired",  "data/generated/pred_cps_R_boot", i) 
 
 
-#------------------------ CPS: Loop through transitions --------------------------
+# %% ------------------------ CPS: Loop through transitions --------------------------
 for trans in ["ER", "RE", "UR", "RU", "NR", "RN"]:
     # load data 
     data_path = 'data/generated/cps_data.dta'
@@ -96,7 +97,7 @@ for trans in ["ER", "RE", "UR", "RU", "NR", "RN"]:
     path_pred = "data/generated/pred_cps_"+trans
     out_data(data_dict, trans, path_pred)
 
-#------------------------ ASEC: Cross-section retired predict --------------------------
+# %% ------------------------ ASEC: Cross-section retired predict --------------------------
 # load data 
 data_path = 'data/generated/asec_data.dta'
 data_dict = data_setup_asec(data_path, pred="R",  work_sample="all", test_size=0.2, samp=1)
@@ -135,6 +136,3 @@ for i in range(50):
     out_data_boot(data_dict, "retired",  "data/generated/pred_asec_R_boot", i) 
 
 
-
-
-#  ------------- testing ----------------

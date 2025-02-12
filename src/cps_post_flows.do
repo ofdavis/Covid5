@@ -125,6 +125,7 @@ cap drop fyr_*
 gen fyr_l = fyr+0.2
 gen fyr_r = fyr+0.6
 
+* re / re 
 local styr 2000
 twoway bar diff_er_rt fyr_l if fyr>=`styr', barw(0.4) ///
 	|| bar diff_re_rt fyr_r if fyr>=`styr', barw(0.4) ///
@@ -167,12 +168,14 @@ cap drop fyr_*
 gen fyr_l = fyr+0.2
 gen fyr_r = fyr+0.6
 
+* er/re - non college 
 twoway bar diff_er_rt0 fyr_l, barw(0.4) ///
 	|| bar diff_re_rt0 fyr_r, barw(0.4) ///
 	||, xline(2020, lc(black%50) lp(dash)) xmla(2010(1)2025, grid tstyle(none)) ///
 		legend(order(1 "Employed to retired" 2 "Retired to employed") rows(1) pos(6)) name(er, replace) /// 
 		xsize(6) ysize(3) ysc(r(-0.01 0.01)) yla(-0.01(0.005)0.01)
-	
+
+* er/re - college 	
 twoway bar diff_er_rt1 fyr_l, barw(0.4) ///
 	|| bar diff_re_rt1 fyr_r, barw(0.4) ///1
 	||, xline(2020, lc(black%50) lp(dash)) xmla(2010(1)2025, grid tstyle(none)) ///
@@ -182,10 +185,7 @@ twoway bar diff_er_rt1 fyr_l, barw(0.4) ///
 grc1leg2 er re, rows(2)
 
 
-
-
-* ------------------------- binscatter on pp score  -----------------------------------
-
+* ------------------------- binscatter on pp score, ind-occ wage ---------------------------
 frame change default 
 gen diff = er-p_er
 
@@ -193,22 +193,21 @@ forvalues y=2020/2024 {  // update so that xtitle is phys prox only for
 	local xtitle "  " 
 	if `y'==2022 local xtitle "Physical proximity score"
 	binscatter2 diff pp_score if fmo>=`=tm(2020m4)' & fyr==`y' & emp==1 [fw=wtf12], name(pp`y', replace) ///
-		xtitle("`xtitle'") ytitle("") title(`y')  lc(black) mc(gray) xsize(1.4) ysize(1.4) nq(30) // reportreg
+		xtitle("`xtitle'") ytitle("") title(`y')  lc(black) mc(gray) xsize(1.4) ysize(1.4) nq(30) ///
+		ysc(r(-0.02 0.03)) yla(-0.02(0.01)0.03)
 } 
 graph combine pp2020 pp2021 pp2022 pp2023 pp2024, rows(1) imargin(0 0 0 0 ) ///
 	xsize(7) ysize(1.4) scale(2)
 
 forvalues y=2020/2024 {  // update so that xtitle is phys prox only for 
 	local xtitle "  "
-	*local y 2020
 	if `y'==2022 local xtitle "Industry-occupation average wage"
 	binscatter2 diff wage_io if fmo>=`=tm(2020m4)' & fyr==`y' & emp==1 [fw=wtf12], name(wage`y', replace) ///
-		xtitle("`xtitle'") ytitle("") title(`y')  lc(black) mc(gray) xsize(1.4) ysize(1.4) nq(30) // reportreg
+		xtitle("`xtitle'") ytitle("") title(`y')  lc(black) mc(gray) xsize(1.4) ysize(1.4) nq(30) ///
+		ysc(r(-0.02 0.03)) yla(-0.02(0.01)0.03)
 } 
 graph combine wage2020 wage2021 wage2022 wage2023 wage2024, rows(1) imargin(0 0 0 0 ) ///
 	xsize(7) ysize(1.4) scale(2)
-
-
 
 
 
@@ -269,13 +268,16 @@ gen total_rt2 = rl_rt2_diff_ + lr_rt2_diff
 
 * graph -- need to specify how stack looks depending on signs of total and constituents
 cap drop fyr_
-gen fyr_ = fyr+0.5
+gen fyr_ = fyr+0.5 // for xtick offset 
+
+colorpalette cblind, select(1 2 4 3 5 6 7 8 9) nograph
 twoway bar lr_rt2_diff fyr_, color(black) /// 
 	|| rbar lr_rt2_diff total_rt2 fyr_ if (lr_rt2_diff>0 & rl_rt2_diff_>0), color(gray)	 /// both positive
 	|| rbar total_rt2 lr_rt2_diff fyr_ if (lr_rt2_diff<0 & rl_rt2_diff_<0), color(gray)	/// both negative 
 	|| bar  rl_rt2_diff_ fyr_ if (lr_rt2_diff>0 & rl_rt2_diff_<0) | (lr_rt2_diff<0 & rl_rt2_diff_>0), color(gray)	/// 
-	|| line total_rt2 fyr_, lw(0.5)  ///
-	||, legend(order(1 "Retirements" 2 "Unretirements" 5 "Total contribution" "to retired share")) /// 
+	|| line total_rt2 fyr_, lw(0.5) lc("`r(p3)'") ///
+	|| scatter total_rt2 fyr_, ms(C) mc("`r(p3)'") ///
+	||, legend(order(1 "Retirements" "(excess)" 2 "Unretirements" "()" 5 "Total contribution" "to retired share")) /// 
 	xtitle("")  xmla(2000(1)2025, grid tstyle(none)) $covid_line_yr xsize(6)
 
 

@@ -3,24 +3,24 @@
 
 frame change default
 cd "/users/owen/Covid5/"
-use data/covid_data, clear 
-
-*--------------------------Create groups for regs------------------------------* 
-gen age_ = age 
-replace age_=80 if age>=80
-
-gen race_ = race 
-replace race_ = 4 if race==5 // group asian and other -- diff from Montes Faria
-
-gen educ_ = inrange(educ,4,5)
-
-egen demo = group(age_ race_ sex educ_)
-* unique demo 
-
+use data/generated/cps_data, clear 
 
 /*-----------------------------------------------------------------------------
 								Collapse 
 -----------------------------------------------------------------------------*/
+* Create demo groups for regs
+gen age_ = age 
+replace age_=80 if age>=80
+
+gen race_ = race 
+replace race_=3 if race_==6  // relabel hisp 
+replace race_ = 4 if race==5 // group asian and other -- diff from Montes Faria
+label define race_ 1 "White" 2 "Black" 3 "Hispanic" 4 "Asian and other" , replace
+label values race_ race_ 
+
+gen educ_ = inrange(educ,4,5)
+
+egen demo = group(age_ race_ sex educ_)
 
 * collapse 
 gen w = 1 
@@ -33,7 +33,7 @@ gen year = year(dofm(mo))
 								Regs
 -----------------------------------------------------------------------------*/
 gen retired_p = . 
-gen retired_p2 = . 
+* gen retired_p2 = . 
 levelsof demo, local(demos)
 local total = r(r)
 *local demos 141
@@ -51,7 +51,7 @@ foreach d of local demos {
 	qui predict ptmp if demo==`d'
 	qui replace retired_p = ptmp if demo==`d'
 	
-	* 2010+
+	/* 2010+
 	cap drop ptmp 
 	qui sum age_ if demo==`d' 
 	if inrange(r(mean),62,70) { 
@@ -61,7 +61,7 @@ foreach d of local demos {
 		qui reg retired urhat c.mo if demo==`d' & mo<`=tm(2020m1)' & mo>`=tm(2010m1)'
 	}
 	qui predict ptmp if demo==`d'
-	qui replace retired_p2 = ptmp if demo==`d'
+	qui replace retired_p2 = ptmp if demo==`d'*/
 }
 drop ptmp 
 
@@ -79,13 +79,13 @@ use data/generated/retire_model_reg_coll, clear
 * ------------- collapse overall -------------
 frame copy default coll2, replace
 frame change coll2 
-collapse (mean) retired retired_p retired_p2 age_ year [fw=w], by(mo)
+collapse (mean) retired retired_p  age_ year [fw=w], by(mo) // retired_p2
 tsset mo 
 tssmooth ma retired_py = retired_p, window(11 1) 
-tssmooth ma retired_py2 = retired_p2, window(11 1) 
+*tssmooth ma retired_py2 = retired_p2, window(11 1) 
 tssmooth ma retired_ = retired, window(11 1) 
-tsline retired_ retired_py retired_py2,  lpattern(solid dash dash)  ///
-	legend(order(1 "Actual" - "" - "" 2 "Predicted" 3 "Predicted, v2")) ///
+tsline retired retired_p ,  lpattern(solid dash dash)  /// retired_py2
+	legend(order(1 "Actual" - "" - "" 2 "Predicted" )) /// 3 "Predicted, v2"
 	xlabel(, format(%tmCY)) xtitle("") $covid_line  name(reg, replace)
 
 
@@ -127,16 +127,16 @@ collapse (mean) retired retired_p age_ year [fw=w], by(mo sex)
 xtset sex mo 
 egen retired_py = mean(retired_p), by(year sex)
 replace retired_py=. if month(dofm(mo))!=8 & mo<`=tm(2023m8)' & mo>`=tm(2000m1)'
-twoway tsline retired retired_py if sex==1 , lcolor(black black) lpattern(solid dash) ///
-	|| tsline retired retired_py if sex==2 , lcolor(gray gray) lpattern(solid dash) ///
+twoway tsline retired retired_py if sex==0 , lcolor(black black) lpattern(solid dash) ///
+	|| tsline retired retired_py if sex==1 , lcolor(gray gray) lpattern(solid dash) ///
 	||, legend(order( 3 "Female" 1 "Male" - "" - "" 2 "Predicted")) ///
 	xlabel(, format(%tmCY)) xtitle("") $covid_line name(retire_model_sex, replace)
 
 * diff 
 gen retired_diff = retired-retired_p 
 tssmooth ma retired_dma = retired_diff, window(6 1)
-twoway tsline retired_dma if sex==1, lcolor(black) lpattern(solid ) ///
-	|| tsline retired_dma if sex==2, lcolor(gray)  lpattern( dash) ///
+twoway tsline retired_dma if sex==0, lcolor(black) lpattern(solid ) ///
+	|| tsline retired_dma if sex==1, lcolor(gray)  lpattern( dash) ///
 	||, legend(order(1 "Male"  2 "Female") pos(6) rows(1)) ///
 	xlabel(, format(%tmCY)) xtitle("") ytitle("") $covid_line ///
 	xsize(3) ysize(2.2) name(sex_diff,replace) title("By sex", size(medium))

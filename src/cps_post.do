@@ -8,7 +8,7 @@ merge 1:1 cpsidp mo using data/generated/pred_cps_R
 assert _merge==3
 drop _merge
 
-* retire preds  bootstrap -- recast to save memory 
+* retire preds bootstrap -- recast to save memory 
 frame2 boot, replace 
 use data/generated/pred_cps_R_boot
 recast float p_retired_*, force 
@@ -43,15 +43,24 @@ twoway tsline retired p_retired, lc(red black) || `text'
 egen p_retired_p05 = rowpctile(p_retired_*), p(5)
 egen p_retired_p95 = rowpctile(p_retired_*), p(95)
 
-twoway line retired mo, lc(red ) ///
-	|| line p_retired mo , lc( black) ///
-	|| rarea p_retired_p05 p_retired_p95 mo, color(gray%50) lw(0)
+*twoway line retired mo, lc(red ) ///
+*	|| line p_retired mo , lc( black) ///
+*	|| rarea p_retired_p05 p_retired_p95 mo, color(gray%50) lw(0)
 	
-twoway lowess retired mo,		bw(0.05) lc(red ) ///
-	|| lowess p_retired mo , 	bw(0.05) lc( black) ///
-	|| lowess p_retired_p05 mo, bw(0.05) lcolor(gray%50)  /// 
-	|| lowess p_retired_p95 mo, bw(0.05) lcolor(gray%50) 
-	
+* lowess-smoothed  
+foreach var in retired p_retired p_retired_p05 p_retired_p95 { 
+	qui lowess `var' mo, bw(0.05) nograph gen(lo_`var')
+}
+
+colorpalette cblind, select(1 2 4 3 5 6 7 8 9) nograph
+twoway line lo_retired mo, lc("`r(p3)'") ///
+	|| line lo_p_retired mo , lc(black) ///
+///	|| line retired mo, lc("`r(p3)'%50") lw(0.1)  ///
+///	|| line p_retired mo , lc( black%50) lw(0.1)  ///
+	|| rarea lo_p_retired_p05 lo_p_retired_p95 mo, color(gray%50) lw(0) /// 
+	legend(order(1 "Retired share" 2 "Predicted" 3 "Confidence interval")) /// 
+	 $covid_line xla(,format(%tmCY)) ysc(r(0.37 0.44)) yla(0.38(0.02)0.44) xsize(6) ///
+	 xtitle("")
 
 
 * -------------------------------- cohort tsline --------------------------
@@ -86,6 +95,7 @@ forvalues i=0/49 {
 egen diff_ma_p05 = rowpctile(diff_ma*), p(5)
 egen diff_ma_p95 = rowpctile(diff_ma*), p(95)
 
+* build graph 
 local text "" 
 colorpalette cblind, select(1 2 4 3 5 6 7 8 9) nograph
 forvalues c=0/3 { 
@@ -94,8 +104,8 @@ forvalues c=0/3 {
 	local text = `"`text' "' + `"(rarea diff_ma_p05 diff_ma_p95 mo if cohort==`c', lw(0) color("`r(p`p')'%20")) "'
 }
 di `"`text'"'
-twoway `text' ||, legend(order(7 "Ages 70+" 5 "Ages 60-69" 3 "Ages 50-59" 1 "Ages 40-49") pos(3)) /// 
-	$covid_line xtitle("") ytitle("") xla(,format(%tmCY))
+twoway `text' ||, $covid_line xtitle("") ytitle("") xla(,format(%tmCY)) /// 
+	legend(order(- " " 7 "Ages 70+" 5 "Ages 60-69" 3 "Ages 50-59" 1 "Ages 40-49") pos(3)) //
 
 
 
@@ -143,18 +153,25 @@ program define collplot
 	if `num'==3 local setup "cols(2) rows(2)"
 	if `num'==4 local setup "cols(2) rows(2)"
 	if `num'==5 di "too many levels, graph will suck"
-	grc1leg2 `comb', `setup' title("${`by'_lab}") imargin(1 1 1 1) `width' name(`by', replace)
-	*frame change default 
-	*frame drop collplot 
+	grc1leg2 `comb', `setup' title("${`by'_lab}") imargin(1 2 1 1) `width' name(`by', replace)
+	frame change default 
+	frame drop collplot 
 end
 
 frame change default
 collplot retired, by(educ)
 
 
-foreach var in sex foreign race married child_yng educ metro { 
+foreach var in sex married foreign race educ metro { 
 	collplot retired, by(`var')
 } 
+/*
+sex0  sex1  marr0 marr1 
+educ1 educ2 educ3 educ4 educ5 
+race1 race2 race3 race4 race5
+for0  for1  met0  met1
+
+*/
 
 
 *------------------------  summarize bar graph --------------------------------
@@ -204,7 +221,7 @@ twoway bar diff num, horiz barw(1.5) ///
 
 
 
-* -------------------------------- covid/housing collapse --------------------------
+* -------------------------------- covid/housing  --------------------------
 frame change default 
 
 *  housing prices 

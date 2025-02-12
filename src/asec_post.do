@@ -96,7 +96,7 @@ frame change default
 cap frame drop results 
 frame create results 
 
-label define incrd 0 "No rent/dividends" 1 "Rent and dividend income", replace
+label define incrd 0 "No rent/dividends" 1 "Rent/dividend income", replace
 label values incrd incrd 
 
 label define own 0 "Rents" 1 "Owns home", replace
@@ -158,21 +158,27 @@ forvalues i=0/49 {
 	gen diff_`i' = retired-p_retired_`i'
 }
 
+* create insamp var for graphs to exclude outliers from figure (for readability)
+* does not affect regression line 
+cap drop insamp
+gen insamp=inrange(diff,r(p1),r(p99))
+
 * covid deaths 
-reg diff covidrate if year==2024 & [pw=pop]
+reg diff covidrate if year==2024  [pw=pop]
 local r2 : display %05.3f e(r2) 
-twoway scatter diff covidrate if year==2024 [w=pop], mcolor(black%10) mlw(0) ///
-	|| lfit    diff covidrate if year==2024 [w=pop] /// 
-	||, text(0.16 0.008 "R-squared: `r2'") /// 
+qui sum diff [fw=pop], d 
+twoway scatter diff covidrate if year==2024 & insamp==1 [w=pop], mcolor(black%10) mlw(0) ///
+	|| lfit    diff covidrate if year==2024 & insamp==1 [w=pop] /// 
+	||, text(0.1 0.008 "R-squared: `r2'") /// 
 	legend(off) xtitle("Cumulative Covid-19 mortality rate") /// 
 	ytitle("Excess retirement")
 
 * housing 
 reg diff dp if year==2024 & own==1 [pw=pop]
 local r2 : display %05.3f e(r2) 
-twoway scatter diff dp if year==2024 [w=pop], mcolor(black%10) mlw(0) ///
-	|| lfit    diff dp if year==2024 [w=pop] ///
-	||, text(0.16 0.7 "R-squared: `r2'") /// 
+twoway scatter diff dp if year==2024 & insamp==1 [w=pop], mcolor(black%10) mlw(0) ///
+	|| lfit    diff dp if year==2024 & insamp==1 [w=pop] ///
+	||, text(0.56 0.7 "R-squared: `r2'") /// 
 	legend(off) xtitle("Cumulative county-level housing price gain, 2019-2023") /// 
 	ytitle("Excess retirement")
 	
@@ -220,20 +226,3 @@ grc1leg2 covidrate dp, rows(2)
 
 
 
-
-
-* --------------------------- screwing around ---------------------------
-frame change default
- 
-local var metro  
-frame copy default coll, replace 
-frame change coll 
-collapse (mean) retired p_retired [fw=asecwt], by(year `var')
-gen diff = retired-p_retired
-xtset `var' year 
-qui levelsof `var', local(levels)
-local text ""
-foreach x of local levels { 
-	local text = "`text' " + "(tsline diff if `var'==`x')"
-} 
-twoway `text'

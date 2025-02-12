@@ -42,8 +42,8 @@ gen ethnic=.
 replace ethnic=6 if inrange(hispan,100,902) & ethnic==. 
 replace ethnic=1 if race==100  & ethnic==. 
 replace ethnic=2 if race==200  & ethnic==. 
-replace ethnic=4 if race==651  & ethnic==. 
-replace ethnic=5 if inlist(race, 300, 650) & ethnic==. 
+replace ethnic=4 if inlist(race, 650,651)  & ethnic==. // for 00-02, PI is in AAPI 
+replace ethnic=5 if race==300 ethnic==. 
 replace ethnic=5 if inrange(race, 652, 830) & ethnic==. 
 label define ethniclab 1 "White" 2 "Black" 4 "Asian" 5 "Other" 6 "Hispanic" , replace
 label values ethnic ethniclab
