@@ -32,19 +32,21 @@ frame change coll
 collapse (mean) retired p_retired*  [fw=asecwt], by(year) 
 tsset year
 
-local text = "" 
-forvalues i=0/29 { 
-	local text = "`text' " + "(tsline p_retired_`i', lc(gray%10))"
-}
-twoway tsline retired p_retired, lc(red black) || `text' 
 
 * find 90% bounds 
 egen p_retired_p05 = rowpctile(p_retired_*), p(5)
 egen p_retired_p95 = rowpctile(p_retired_*), p(95)
 
-twoway line retired   year, lc(red ) ///
-	|| line p_retired year , lc( black) ///
-	|| rarea p_retired_p05 p_retired_p95 year, color(gray%50) lw(0)
+
+* unsmoothed with conf int 
+colorpalette cblind, select(1 2 4 3 5 6 7 8 9) nograph
+twoway line p_retired year , lc( "`r(p3)'") ///
+	|| rarea p_retired_p05 p_retired_p95 year, color("`r(p3)'%30") lw(0) ///
+	|| line retired year, lc(black  ) ///
+	||, $covid_line  xtitle("") ///
+	legend(order(3 "Retired share" 1 "Predicted" 2 "Confidence interval"))  ///
+	xsize(6) ysize(3.75)
+graph export output/figs/retired_share_main_asec.pdf, replace 
 
 
 * --------------------------- check CPS: cohort ------------------------------* 
@@ -77,6 +79,7 @@ forvalues i=0/49 {
 egen diff_p05 = rowpctile(diff*), p(5)
 egen diff_p95 = rowpctile(diff*), p(95)
 
+* cohort diff graph 
 local text "" 
 colorpalette cblind, select(1 2 4 3 5 6 7 8 9) nograph
 forvalues c=0/3 { 
@@ -85,9 +88,10 @@ forvalues c=0/3 {
 	local text = `"`text' "' + `"(rarea diff_p05 diff_p95 year if cohort==`c', lw(0) color("`r(p`p')'%20")) "'
 }
 di `"`text'"'
-twoway `text' ||, legend(order(7 "Ages 70+" 5 "Ages 60-69" 3 "Ages 50-59" 1 "Ages 40-49") pos(3)) /// 
-	$covid_line xtitle("") ytitle("") 
-
+twoway `text' ||, $covid_line xtitle("") ytitle("") xla(,format(%tmCY)) /// 
+	legend(order(- " " 7 "Ages 70+" 5 "Ages 60-69" 3 "Ages 50-59" 1 "Ages 40-49") pos(3)) ///
+	xsize(6) ysize(3.75)
+graph export output/figs/cohorts_asec.pdf, replace
 
 
 * --------------------------- check CPS: bar graph demogs ------------------------------* 
@@ -135,14 +139,14 @@ cap drop num
 gen num = _n*2 + add*2
 labmask num, val(name)
 
+* graph 
 qui levelsof num
 local num = r(levels)
 di "`num'"
 twoway bar diff num, horiz barw(1.5) ///
 	|| rcap diff_p05 diff_p95 num, horiz ///
 	||, yla("`num'", valuelabel) ysc(reverse) xtitle("") ytitle("") legend(off) xline(0, lc(black)) 
-
-
+graph export output/figs/diff_demo_bars_asec.pdf, replace 
 
 
 * -------------------------------- covid/housing collapse --------------------------
@@ -160,27 +164,29 @@ forvalues i=0/49 {
 
 * create insamp var for graphs to exclude outliers from figure (for readability)
 * does not affect regression line 
+qui sum diff [fw=pop], d 
 cap drop insamp
 gen insamp=inrange(diff,r(p1),r(p99))
 
 * covid deaths 
 reg diff covidrate if year==2024  [pw=pop]
 local r2 : display %05.3f e(r2) 
-qui sum diff [fw=pop], d 
 twoway scatter diff covidrate if year==2024 & insamp==1 [w=pop], mcolor(black%10) mlw(0) ///
 	|| lfit    diff covidrate if year==2024 & insamp==1 [w=pop] /// 
 	||, text(0.1 0.008 "R-squared: `r2'") /// 
 	legend(off) xtitle("Cumulative Covid-19 mortality rate") /// 
 	ytitle("Excess retirement")
+graph export output/figs/covid_scatter_asec.pdf, replace 
 
 * housing 
 reg diff dp if year==2024 & own==1 [pw=pop]
 local r2 : display %05.3f e(r2) 
 twoway scatter diff dp if year==2024 & insamp==1 [w=pop], mcolor(black%10) mlw(0) ///
 	|| lfit    diff dp if year==2024 & insamp==1 [w=pop] ///
-	||, text(0.56 0.7 "R-squared: `r2'") /// 
+	||, text(0.05 0.7 "R-squared: `r2'") /// 
 	legend(off) xtitle("Cumulative county-level housing price gain, 2019-2023") /// 
 	ytitle("Excess retirement")
+graph export output/figs/housing_scatter_asec.pdf, replace 
 	
 
 * run through all bootstrap samples 
@@ -221,6 +227,8 @@ foreach var in dp covidrate {
 		legend(order(2 "Main estimate" 1 "Bootstrap estimates" ) pos(6) rows(1)) ysize(2)
 }
 grc1leg2 covidrate dp, rows(2)
+graph export output/figs/covid_housing_coeffs_asec.pdf, replace 
+
 
 
 

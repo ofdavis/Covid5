@@ -1,5 +1,5 @@
 # %% 
-import sys, os, io, time   
+import sys, os, io, time, itertools, contextlib, gc
 import pandas as pd
 import numpy as np 
 from numpy import random 
@@ -10,8 +10,12 @@ from sklearn.model_selection import StratifiedKFold
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
+import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Dataset
-import contextlib
+
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(project_dir)
+sys.path.append(project_dir)
 
 from src.functions import data_setup, data_setup_asec, full_model, full_model, kfold_cv
 from src.functions import post_data, time_graph, time_graph_by, out_data, out_data_boot, update_best_params
@@ -31,23 +35,27 @@ from src.functions import post_data, time_graph, time_graph_by, out_data, out_da
 # %%------------------------ CPS: Cross-section retired predict --------------------------
 # load data 
 data_path = 'data/generated/cps_data.dta'
-data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
+data_dict = data_setup(data_path, pred="R", train_size=0.7, samp=1)
 
 # run kfold_cv to find best params
 results_df, best_params = kfold_cv(full_model, data_dict, 5,
                                    {"n_hidden1": [16, 24, 32],
-                                    "lr": [0.005, 0.01, 0.05],
-                                    "epochs": [1000, 1500]},
-                                   {"report_every": 500},
-                                   path = "data/generated/cv_cps_R.csv")
+                                    "lr": [0.005, 0.01, 0.05]},
+                                   {"report_every": 100,
+                                    "epochs": 5000},
+                                   path = "results/cv_cps_R.csv")
 
 # run model using best params
-best_params_df = pd.read_csv("data/generated/cv_cps_R.csv")
+best_params_df = pd.read_csv("results/cv_cps_R.csv")
 best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
 for key in ["avg_loss","avg_f1","model"]:
     best_params.pop(key)
 model, evals = full_model(data_dict, **best_params, seed=42, weight=True)
 data_dict = post_data(data_dict, model)
+
+# graph to ensure model is working
+time_graph(data_dict, "retired", pvar="py2", smooth=True, diff=False, weight="wtfinl")
+time_graph_by(data_dict, "retired", pvar="py2", smooth=True, weight="wtfinl", byvar="educ", data_type="val")
 
 # save results  
 out_data(data_dict, "retired", "data/generated/pred_cps_R")
@@ -55,7 +63,7 @@ out_data(data_dict, "retired", "data/generated/pred_cps_R")
 # bootstrap to quantify uncertainty 
 data_path = 'data/generated/cps_data.dta'
 data_dict = data_setup(data_path, pred="R", test_size=0.2, samp=1)
-best_params_df = pd.read_csv("data/generated/cv_cps_R.csv")
+best_params_df = pd.read_csv("results/cv_cps_R.csv")
 best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
 for key in ["avg_loss","avg_f1","model"]:
     best_params.pop(key)
@@ -71,15 +79,15 @@ for i in range(50):
 for trans in ["ER", "RE", "UR", "RU", "NR", "RN"]:
     # load data 
     data_path = 'data/generated/cps_data.dta'
-    data_dict = data_setup(data_path, trans, test_size=0.2, samp=1)
+    data_dict = data_setup(data_path, trans, train_size=0.7, samp=1)
     
     #kfold_cv to find best params
     path_cv = "data/generated/cv_cps_"+trans+".csv"
     results_df, best_params = kfold_cv(full_model, data_dict, 5,
                                     {"n_hidden1": [16, 24, 32],
-                                        "lr": [0.005, 0.01, 0.05],
-                                        "epochs": [1000, 1500]},
-                                    {"report_every": 500},
+                                        "lr": [0.005, 0.01, 0.05]},
+                                    {"report_every": 500,
+                                        "epochs": 5000},
                                     path = path_cv)
 
     # run model using best params (fall back to lowest loss if f1 is too high)
@@ -100,31 +108,35 @@ for trans in ["ER", "RE", "UR", "RU", "NR", "RN"]:
 # %% ------------------------ ASEC: Cross-section retired predict --------------------------
 # load data 
 data_path = 'data/generated/asec_data.dta'
-data_dict = data_setup_asec(data_path, pred="R",  work_sample="all", test_size=0.2, samp=1)
+data_dict = data_setup_asec(data_path, pred="R",  work_sample="all", train_size=0.7, samp=1)
 
 # run kfold_cv to find best params
 results_df, best_params = kfold_cv(full_model, data_dict, 5,
                                    {"n_hidden1": [16, 24, 32],
-                                    "lr": [0.005, 0.01, 0.05],
-                                    "epochs": [500, 1000]},
-                                   {"report_every": 500},
-                                   path = "data/generated/cv_asec_R.csv")
+                                    "lr": [0.005, 0.01, 0.05],},
+                                   {"report_every": 500,
+                                    "epochs": 5000},
+                                   path = "results/cv_asec_R.csv")
 
 # run model using best params
-best_params_df = pd.read_csv("data/generated/cv_asec_R.csv")
+best_params_df = pd.read_csv("results/cv_asec_R.csv")
 best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
 for key in ["avg_loss","avg_f1","model"]:
     best_params.pop(key)
 model, evals = full_model(data_dict, **best_params, seed=42, weight=True)
 data_dict = post_data(data_dict, model)
 
+# graph to ensure model is working
+time_graph(data_dict, "retired", pvar="py2", smooth=True, diff=False, weight="asecwt")
+time_graph_by(data_dict, "retired", pvar="py2", smooth=True, weight="asecwt", byvar="educ", data_type="val")
+
 # save results  
 out_data(data_dict, "retired", "data/generated/pred_asec_R")
 
 # bootstrap to quantify uncertainty 
 data_path = 'data/generated/asec_data.dta'
-data_dict = data_setup_asec(data_path, pred="R", test_size=0.2, samp=1)
-best_params_df = pd.read_csv("data/generated/cv_asec_R.csv")
+data_dict = data_setup_asec(data_path, pred="R", train_size=0.7, samp=1)
+best_params_df = pd.read_csv("results/cv_asec_R.csv")
 best_params = best_params_df.loc[best_params_df['avg_f1'].idxmin()].to_dict()
 for key in ["avg_loss","avg_f1","model"]:
     best_params.pop(key)

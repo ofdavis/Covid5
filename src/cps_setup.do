@@ -42,8 +42,8 @@ gen ethnic=.
 replace ethnic=6 if inrange(hispan,100,902) & ethnic==. 
 replace ethnic=1 if race==100  & ethnic==. 
 replace ethnic=2 if race==200  & ethnic==. 
-replace ethnic=4 if inlist(race, 650,651)  & ethnic==. // for 00-02, PI is in AAPI 
-replace ethnic=5 if race==300 ethnic==. 
+replace ethnic=4 if inlist(race, 650,651) & ethnic==. // for 00-02, PI is in AAPI 
+replace ethnic=5 if race==300 & ethnic==. 
 replace ethnic=5 if inrange(race, 652, 830) & ethnic==. 
 label define ethniclab 1 "White" 2 "Black" 4 "Asian" 5 "Other" 6 "Hispanic" , replace
 label values ethnic ethniclab
@@ -114,7 +114,7 @@ replace agegrp_sp = 55 if inrange(age_sp, 15, 59)
 replace agegrp_sp = 60 if inrange(age_sp, 60, 61)
 replace agegrp_sp = 62 if inrange(age_sp, 62, 64)
 replace agegrp_sp = 65 if inrange(age_sp, 65, 69)
-replace agegrp_sp = 70 if inrange(age_sp, 70, 85)
+replace agegrp_sp = 70 if inrange(age_sp, 70, 90)
 
 * for married respondents who have missing age_sp, make agegrp_sp same as agegrp
 misstable sum agegrp_sp if married==1 

@@ -1,3 +1,4 @@
+# %% 
 import sys, os, io, time, itertools, contextlib, gc
 import pandas as pd
 import numpy as np
@@ -12,8 +13,8 @@ from torch import nn
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-# data load
-def data_setup(path, pred, test_size=0.5, samp=1):
+#%% data_setup cps 
+def data_setup(path, pred, train_size=0.7, samp=1):
     if pred not in ["ER", "UR", "NR", "RE", "RU", "RN", "R"]:
         raise ValueError("pred must be ER, UR, NR, RE, RU, RN or R")
 
@@ -51,10 +52,6 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     ssa      = data_in['ssa'].astype("bool")
     metro    = data_in['metro'].astype("bool")
     vet      = data_in['vet'].astype("bool")
-    #diffmob  = data_in['diffmob'].astype("bool")
-    #diffrem  = data_in['diffrem'].astype("bool")
-    #diffphys = data_in['diffphys'].astype("bool")
-    #unem     = data_in['unem'].astype("bool")
     untemp   = data_in['untemp'].astype("bool")
     unlose   = data_in['unlose'].astype("bool")
     unable   = data_in['unable'].astype("bool")
@@ -70,8 +67,6 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     agesq    = data_in.agesq.astype("float")
     agecub   = data_in.agecub.astype("float")
     dur      = data_in.dur.astype("float")
-    #wage     = data.wage.astype("float")
-    #wageflag = data['wageflag'].astype("bool")
     pia      = data_in.pia.astype("float")
     urhat    = data_in.urhat.astype("float")
     ssapia   = pd.DataFrame({"ssapia" :(data_in.pia * data_in.ssa).astype("float")})
@@ -79,20 +74,21 @@ def data_setup(path, pred, test_size=0.5, samp=1):
 
     # create x and y dataframes, pre and post, X and y; for each of the two transitions and the retired outcome
     if pred[0]=="E":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
-                            ind_maj, occ_maj, govt, ft, absnt, self], axis=1)
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, 
+                             nativity, sex, educ, covid, f12_covid, marr, agesp, ssa, metro, child_any, child_yng, child_adt, 
+                             vet, age, agesq, agecub, pia, ssapia, urhat, ind_maj, occ_maj, govt, ft, absnt, self], axis=1)
     if pred[0]=="U":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
-                            untemp, unlose, dur], axis=1)
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, 
+                             nativity, sex, educ, covid, f12_covid, marr, agesp, ssa, metro, child_any, child_yng, child_adt, 
+                             vet, age, agesq, agecub, pia, ssapia, urhat, untemp, unlose, dur], axis=1)
     if pred[0]=="N":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr,
-                            agesp, ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat,
-                            unable, nlf_oth], axis=1)
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, 
+                             nativity, sex, educ, covid, f12_covid, marr, agesp, ssa, metro, child_any, child_yng, child_adt, 
+                             vet, age, agesq, agecub, pia, ssapia, urhat, unable, nlf_oth], axis=1)
     if pred[0]=="R":
-        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, nativity, sex, educ, covid, f12_covid, marr, agesp,
-                            ssa, metro, child_any, child_yng, child_adt, vet, age, agesq, agecub, pia, ssapia, urhat], axis=1)
+        Xdf_out = pd.concat([data_in.cpsidp, data_in.wtfinl, data_in.wtf12, mish, mo, month, state, race, 
+                             nativity, sex, educ, covid, f12_covid, marr, agesp, ssa, metro, child_any, child_yng, child_adt, 
+                             vet, age, agesq, agecub, pia, ssapia, urhat], axis=1)
     if pred=="R": # drop uneeded cols if just R predict
         Xdf_out = Xdf_out.drop(["wtf12", "f12_covid"], axis=1)
 
@@ -124,22 +120,46 @@ def data_setup(path, pred, test_size=0.5, samp=1):
     if np.sum(Xdf_out.isnull().sum())>0:
         print("There are missing values in the data")
 
-    # split into test and train -- only need to spit pre
-    Xdf_train_out, Xdf_test_out, ydf_train_out, ydf_test_out = train_test_split(
+    # split into train and testval -- only need to spit pre
+    Xdf_train_out, Xdf_testval_out, ydf_train_out, ydf_testval_out = train_test_split(
         Xdf_pre_out,
         ydf_pre_out,
-        test_size=test_size,
-        shuffle=False,
-        random_state=1) # make the random split reproducible
+        test_size=(1-train_size),
+        #shuffle=False,
+        random_state=1, # make the random split reproducible
+        stratify=ydf_pre_out) 
+    
+    # split testval 50/50 into test and val
+    Xdf_test_out, Xdf_val_out, ydf_test_out, ydf_val_out = train_test_split(
+        Xdf_testval_out,
+        ydf_testval_out,
+        test_size=0.5,
+        #shuffle=False,
+        random_state=1, # make the random split reproducible
+        stratify=ydf_testval_out) 
 
     # standardize variables
     sc = StandardScaler()
     for i in range(Xdf_pre_out.shape[1]):
         if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["cpsidp","wtfinl","wtf12"]):
-            #print(f"{i} is not binary")
             Xdf_train_out.iloc[:,i] = sc.fit_transform(Xdf_train_out.iloc[:,i].to_numpy().reshape(-1,1), y=None)
             Xdf_test_out.iloc[:,i]  = sc.transform(Xdf_test_out.iloc[:,i].to_numpy().reshape(-1,1))
+            Xdf_val_out.iloc[:,i]   = sc.transform(Xdf_val_out.iloc[:,i].to_numpy().reshape(-1,1))
             Xdf_post_out.iloc[:,i]  = sc.transform(Xdf_post_out.iloc[:,i].to_numpy().reshape(-1,1))
+
+    # define dict, populate with all but tensors 
+    data_dict_out = dict(
+        data=data_in,
+        Xdf=Xdf_out, #Xdf_pre=Xdf_pre_out,
+        Xdf_post=Xdf_post_out,
+        Xdf_train=Xdf_train_out,
+        Xdf_test=Xdf_test_out,
+        Xdf_val=Xdf_val_out,
+        ydf_post=ydf_post_out,
+        ydf_train=ydf_train_out,
+        ydf_test=ydf_test_out, # ydf_pre=ydf_pre_out,
+        ydf_val=ydf_val_out, 
+    )
 
     # turn data to tensors
     if (pred=="R"):
@@ -149,42 +169,15 @@ def data_setup(path, pred, test_size=0.5, samp=1):
         wtvar   ="wtf12"
         exclude_cols = ["wtfinl", "wtf12", "cpsidp", "covid", "f12_covid"]
 
-    Xtn_train_out = torch.tensor(Xdf_train_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_test_out  = torch.tensor( Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_post_out  = torch.tensor( Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    ytn_train_out = torch.tensor(ydf_train_out.values).type(torch.float32)
-    ytn_test_out  = torch.tensor( ydf_test_out.values).type(torch.float32)
-    ytn_post_out  = torch.tensor( ydf_post_out.values).type(torch.float32)
-    wtn_train_out = torch.tensor(Xdf_train_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
-    wtn_test_out  = torch.tensor( Xdf_test_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
-    wtn_post_out  = torch.tensor( Xdf_post_out[wtvar].to_numpy(dtype=float)).type(torch.float32)
-
-    data_dict_out = dict(
-        data=data_in,
-        Xdf=Xdf_out,
-        Xdf_pre=Xdf_pre_out,
-        Xdf_post=Xdf_post_out,
-        Xdf_train=Xdf_train_out,
-        Xdf_test=Xdf_test_out,
-        ydf_train=ydf_train_out,
-        ydf_test=ydf_test_out,
-        ydf_pre=ydf_pre_out,
-        ydf_post=ydf_post_out,
-        Xtn_train=Xtn_train_out,
-        Xtn_test=Xtn_test_out,
-        Xtn_post=Xtn_post_out,
-        ytn_train=ytn_train_out,
-        ytn_test=ytn_test_out,
-        ytn_post=ytn_post_out,
-        wtn_train=wtn_train_out,
-        wtn_test=wtn_test_out,
-        wtn_post=wtn_post_out
-    )
+    for df in ['post', 'train', 'test', 'val']:
+        data_dict_out['Xtn_'+df] = torch.tensor(data_dict_out['Xdf_'+df].drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
+        data_dict_out['ytn_'+df] = torch.tensor(data_dict_out['ydf_'+df].values).type(torch.float32)
+        data_dict_out['wtn_'+df] = torch.tensor(data_dict_out['Xdf_'+df][wtvar].to_numpy(dtype=float)).type(torch.float32)
 
     return data_dict_out
 
 
-def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
+def data_setup_asec(path, pred, work_sample="all", train_size=0.5, samp=1):
     if pred not in ["R"]:
         raise ValueError("pred must be R for ASEC ")
     #
@@ -217,9 +210,6 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     ssa      = data_in['ssa'].astype("bool")
     metro    = data_in['metro'].astype("bool")
     vet      = data_in['vet'].astype("bool")
-    #diffmob  = data_in['diffmob'].astype("bool")
-    #diffrem  = data_in['diffrem'].astype("bool")
-    #diffphys = data_in['diffphys'].astype("bool")
     selfly   = data_in['selfly'].astype("bool")
     govtly   = data_in['govtly'].astype("bool")
     child_any= data_in['child_any'].astype("bool")
@@ -269,168 +259,58 @@ def data_setup_asec(path, pred, work_sample="all", test_size=0.5, samp=1):
     if np.sum(Xdf_out.isnull().sum())>0:
         print("There are missing values in the data")
     #
-    # split into test and train -- only need to spit pre
-    Xdf_train_out, Xdf_test_out, ydf_train_out, ydf_test_out = train_test_split(
+    # split into train and testval -- only need to spit pre
+    Xdf_train_out, Xdf_testval_out, ydf_train_out, ydf_testval_out = train_test_split(
         Xdf_pre_out,
         ydf_pre_out,
-        test_size=test_size,
-        shuffle=False,
-        random_state=1) # make the random split reproducible
-    #
+        test_size=(1-train_size),
+        #shuffle=False,
+        random_state=1, # make the random split reproducible
+        stratify=ydf_pre_out) 
+    
+    # split testval 50/50 into test and val
+    Xdf_test_out, Xdf_val_out, ydf_test_out, ydf_val_out = train_test_split(
+        Xdf_testval_out,
+        ydf_testval_out,
+        test_size=0.5,
+        #shuffle=False,
+        random_state=1, # make the random split reproducible
+        stratify=ydf_testval_out) 
+    
     # standardize variables
     sc = StandardScaler()
     for i in range(Xdf_pre_out.shape[1]):
         if (Xdf_train_out.iloc[:,i].dtype!="bool") & (Xdf_train_out.iloc[:,i].name not in ["asecidp","asecwt"]):
-            #print(f"{i} is not binary")
             Xdf_train_out.iloc[:,i] = sc.fit_transform(Xdf_train_out.iloc[:,i].to_numpy().reshape(-1,1), y=None)
             Xdf_test_out.iloc[:,i]  = sc.transform(Xdf_test_out.iloc[:,i].to_numpy().reshape(-1,1))
+            Xdf_val_out.iloc[:,i]   = sc.transform(Xdf_val_out.iloc[:,i].to_numpy().reshape(-1,1))
             Xdf_post_out.iloc[:,i]  = sc.transform(Xdf_post_out.iloc[:,i].to_numpy().reshape(-1,1))
-    #
-    # turn data to tensors
-    exclude_cols = ["asecwt", "asecidp", "covid"]
-    Xtn_train_out = torch.tensor(Xdf_train_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_test_out  = torch.tensor( Xdf_test_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    Xtn_post_out  = torch.tensor( Xdf_post_out.drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
-    ytn_train_out = torch.tensor(ydf_train_out.values).type(torch.float32)
-    ytn_test_out  = torch.tensor( ydf_test_out.values).type(torch.float32)
-    ytn_post_out  = torch.tensor( ydf_post_out.values).type(torch.float32)
-    wtn_train_out = torch.tensor(Xdf_train_out["asecwt"].to_numpy(dtype=float)).type(torch.float32)
-    wtn_test_out  = torch.tensor( Xdf_test_out["asecwt"].to_numpy(dtype=float)).type(torch.float32)
-    wtn_post_out  = torch.tensor( Xdf_post_out["asecwt"].to_numpy(dtype=float)).type(torch.float32)
-    #
+    
+    # define dict, populate with all but tensors 
     data_dict_out = dict(
         data=data_in,
-        Xdf=Xdf_out,
-        Xdf_pre=Xdf_pre_out,
+        Xdf=Xdf_out, 
         Xdf_post=Xdf_post_out,
         Xdf_train=Xdf_train_out,
         Xdf_test=Xdf_test_out,
-        ydf_train=ydf_train_out,
-        ydf_test=ydf_test_out,
-        ydf_pre=ydf_pre_out,
+        Xdf_val=Xdf_val_out,
         ydf_post=ydf_post_out,
-        Xtn_train=Xtn_train_out,
-        Xtn_test=Xtn_test_out,
-        Xtn_post=Xtn_post_out,
-        ytn_train=ytn_train_out,
-        ytn_test=ytn_test_out,
-        ytn_post=ytn_post_out,
-        wtn_train=wtn_train_out,
-        wtn_test=wtn_test_out,
-        wtn_post=wtn_post_out
+        ydf_train=ydf_train_out,
+        ydf_test=ydf_test_out, 
+        ydf_val=ydf_val_out, 
     )
-    #
+    
+    exclude_cols = ["asecwt", "asecidp", "covid"]
+    for df in ['post', 'train', 'test', 'val']:
+        data_dict_out['Xtn_'+df] = torch.tensor(data_dict_out['Xdf_'+df].drop(exclude_cols, axis=1).to_numpy(dtype=float)).type(torch.float32)
+        data_dict_out['ytn_'+df] = torch.tensor(data_dict_out['ydf_'+df].values).type(torch.float32)
+        data_dict_out['wtn_'+df] = torch.tensor(data_dict_out['Xdf_'+df]['asecwt'].to_numpy(dtype=float)).type(torch.float32)
+    
     return data_dict_out
 
 # ------------------------ modeling ---------------------------------
-def batch_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42,
-               weight=False, batch_size=128, report_every=100, num_workers=0):
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print(f"GPU is available and has {os.cpu_count()} workers.") # Print a message to confirm GPU usage
-    else:
-        device = torch.device("cpu")
-        print("GPU not available, using CPU instead.") # Print a message if GPU is not available
-
-    torch.manual_seed(seed)
-
-    Xtn_train_in = data_dict_in["Xtn_train"].to(device)
-    ytn_train_in = data_dict_in["ytn_train"].to(device)
-    Xtn_test_in = data_dict_in["Xtn_test"].to(device)
-    ytn_test_in = data_dict_in["ytn_test"].to(device)
-    wtn_train_in = torch.squeeze(data_dict_in["wtn_train"]).to(device)
-    wtn_test_in = torch.squeeze(data_dict_in["wtn_test"]).to(device)
-
-    train_dataset = TensorDataset(Xtn_train_in, ytn_train_in, wtn_train_in)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-
-    n_hidden2 = int(0.6*n_hidden1)
-    class ChurnModel(nn.Module):
-        def __init__(self):
-            super(ChurnModel, self).__init__()
-            self.layer_1 = nn.Linear(Xtn_train_in.shape[1], n_hidden1)
-            self.layer_2 = nn.Linear(n_hidden1, n_hidden2)
-            self.layer_out = nn.Linear(n_hidden2, 1)
-            self.relu = nn.ReLU()
-            self.dropout = nn.Dropout(p=0.1)
-            self.batchnorm1 = nn.BatchNorm1d(n_hidden1)
-            self.batchnorm2 = nn.BatchNorm1d(n_hidden2)
-
-        def forward(self, inputs):
-            x = self.relu(self.layer_1(inputs))
-            x = self.batchnorm1(x)
-            x = self.relu(self.layer_2(x))
-            x = self.batchnorm2(x)
-            x = self.dropout(x)
-            x = self.layer_out(x)
-            return x
-
-    model_out = ChurnModel().to(device)
-
-    def loss_fn(y_logits_in, ytn_in, weight_in, wtn_in):
-        y_logits_in = torch.squeeze(y_logits_in)
-        ytn_in = torch.squeeze(ytn_in)
-        wtn_in = torch.squeeze(wtn_in)
-        if weight_in == False:
-            loss_fn_ = nn.BCEWithLogitsLoss()
-            loss_out = loss_fn_(y_logits_in, ytn_in)
-        else:
-            loss_fn_ = nn.BCEWithLogitsLoss(reduction='none')
-            loss_0 = loss_fn_(y_logits_in, ytn_in)
-            loss_out = (wtn_in * loss_0 / torch.sum(wtn_in)).sum()
-        return loss_out
-
-    def f1_fn(y_true, y_pred):
-        tp = (y_true * y_pred).sum().to(torch.float32)
-        fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
-        fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
-
-        precision = tp / (tp + fp + 1e-8)
-        recall = tp / (tp + fn + 1e-8)
-        f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
-        return 1 - f1
-
-    optimizer = torch.optim.Adam(params=model_out.parameters(), lr=lr)
-
-    train_losses = []
-    for epoch in range(epochs):
-        model_out.train()
-        for batch_X, batch_y, batch_w in train_loader:
-            batch_X, batch_y, batch_w = batch_X.to(device), batch_y.to(device), batch_w.to(device)
-            optimizer.zero_grad()
-            y_logits = model_out(batch_X)
-            loss = loss_fn(y_logits, batch_y, weight, batch_w)
-            loss.backward()
-            optimizer.step()
-            train_losses.append(loss.item())
-
-        if (epoch+1) % report_every == 0:
-            model_out.eval()
-            with torch.no_grad():
-                test_logits = model_out(Xtn_test_in).squeeze();
-                test_pred = torch.round(torch.sigmoid(test_logits));
-                test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
-                test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
-                print(f"Epoch: {epoch+1} | Avg loss: {np.mean(train_losses):.5f}, F1: TK | Test Loss: {test_loss.item():.5f}, Test F1: {test_f1:.4f}")
-
-        train_losses = []
-
-    model_out.eval()
-    with torch.no_grad():
-        test_logits = model_out(Xtn_test_in).squeeze();
-        test_pred = torch.round(torch.sigmoid(test_logits));
-        test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
-        test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
-
-    # clean up 
-    del optimizer, train_dataset, train_loader
-    gc.collect()
-
-    evals = {"loss_test": test_loss.item(), "f1_test": test_f1.item()}
-    return model_out, evals
-
-
-def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=False, report_every=100, bootstrap=False):
+def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=False, 
+               report_every=100, bootstrap=False, patience_es=20):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # create bootstrap index if bootstrapping and use this for training tensors; else just bring in training tensors 
@@ -440,18 +320,18 @@ def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=Fals
         Xtn_train_in = data_dict_in["Xtn_train"][idx].to(device)
         ytn_train_in = data_dict_in["ytn_train"][idx].to(device)
         wtn_train_in = torch.squeeze(data_dict_in["wtn_train"])[idx].to(device)
-    
     else: 
         Xtn_train_in = data_dict_in["Xtn_train"].to(device)
         ytn_train_in = data_dict_in["ytn_train"].to(device)
         wtn_train_in = torch.squeeze(data_dict_in["wtn_train"]).to(device)
     
-    Xtn_test_in = data_dict_in["Xtn_test"].to(device)
-    ytn_test_in = data_dict_in["ytn_test"].to(device)
-    wtn_test_in = torch.squeeze(data_dict_in["wtn_test"]).to(device)
+    Xtn_val_in = data_dict_in["Xtn_val"].to(device)
+    ytn_val_in = data_dict_in["ytn_val"].to(device)
+    wtn_val_in = torch.squeeze(data_dict_in["wtn_val"]).to(device)
 
     n_hidden2 = int(0.6*n_hidden1)
     num_in = Xtn_train_in.shape[1]
+
     class ChurnModel(nn.Module):
         def __init__(self):
             super(ChurnModel, self).__init__()
@@ -473,10 +353,8 @@ def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=Fals
             x = self.batchnorm2(x)
             x = self.dropout(x)
             x = self.layer_out(x)
-
             return x
 
-    #model_out = model0().to(device)
     model_out = ChurnModel().to(device)
 
     # define loss function
@@ -490,9 +368,7 @@ def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=Fals
             loss_out   = (wtn_in*loss_0/torch.sum(wtn_in)).sum()
         return loss_out
 
-    # Create an optimizer
-    optimizer = torch.optim.Adam(params=model_out.parameters(), lr=lr)
-
+    # Define an F1 metric function (return 1 - F1 so that lower values are better).
     def f1_fn(y_true, y_pred):
         tp = (y_true * y_pred).sum().to(torch.float32)
         fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
@@ -503,48 +379,116 @@ def full_model(data_dict_in, n_hidden1, lr=0.1, epochs=500, seed=42, weight=Fals
         f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
         return 1 - f1
 
-    #--------------- TEST AND TRAIN LOOP -------------------
+    # Early Stopping Class
+    class EarlyStopping:
+        #Early stops the training if the monitored loss does not improve after a given patience
+        def __init__(self, patience=20, delta=0, verbose=True, path='checkpoint.pt'):
+            self.patience = patience
+            self.delta = delta
+            self.verbose = verbose
+            self.counter = 0
+            self.best_score = None
+            self.early_stop = False
+            self.val_loss_min = np.Inf
+            self.path = path
+
+        def __call__(self, val_loss, model):
+            score = -val_loss  # because we want to minimize loss
+            if self.best_score is None:
+                self.best_score = score
+                self.save_checkpoint(val_loss, model)
+            elif score < self.best_score + self.delta:
+                self.counter += 1
+                if self.verbose:
+                    print(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+                if self.counter >= self.patience:
+                    self.early_stop = True
+            else:
+                self.best_score = score
+                self.save_checkpoint(val_loss, model)
+                self.counter = 0
+
+        def save_checkpoint(self, val_loss, model):
+            # Saves model when the val loss decreases
+            if self.verbose:
+                print(f"Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...")
+            torch.save(model.state_dict(), self.path)
+            self.val_loss_min = val_loss
+    
+    # Create an optimizer
+    optimizer = torch.optim.Adam(params=model_out.parameters(), lr=lr)
+
+    # Set manual seed for reproducibility
     torch.manual_seed(seed)
 
-    # Put data to target device
-    Xtn_train_in, ytn_train_in = Xtn_train_in.to(device), ytn_train_in.to(device)
-    Xtn_test_in,  ytn_test_in =  Xtn_test_in.to(device),  ytn_test_in.to(device)
+    # Instantiate EarlyStopping
+    early_stopping = EarlyStopping(patience=patience_es, verbose=False)
 
+    #--------------- TEST AND TRAIN LOOP -------------------
     # Training and evaluation loop
     for epoch in range(epochs):
-        # Forward pass
+        # --- Training Phase ---
         y_logits = model_out(Xtn_train_in).squeeze();
         y_pred = torch.round(torch.sigmoid(y_logits)); # logits -> prediction probabilities -> prediction labels
 
-        # Calculate loss and f1, append to lists for plots; depends on whether using weights
         loss = loss_fn(y_logits, ytn_train_in, weight, wtn_train_in)
         f1  = f1_fn(y_true=ytn_train_in, y_pred=y_pred);
 
-        # Optimizer zero grad, backward loss, optimizer
         optimizer.zero_grad();
         loss.backward();
         optimizer.step();
 
-        ### Test data
+        # --- Validation Phase ---
         f = io.StringIO()
-        with contextlib.redirect_stdout(f):
+        with contextlib.redirect_stdout(f): ## this suppresses the print output from the model
             model_out.eval()
         with torch.inference_mode():
-            test_logits = model_out(Xtn_test_in).squeeze();
-            test_pred = torch.round(torch.sigmoid(test_logits)); # logits -> prediction probabilities -> prediction labels
-            test_loss = loss_fn(test_logits, ytn_test_in, weight, wtn_test_in);
-            test_f1 = f1_fn(y_true=ytn_test_in, y_pred=test_pred);
+            val_logits = model_out(Xtn_val_in).squeeze();
+            val_pred = torch.round(torch.sigmoid(val_logits)); # logits -> prediction probabilities -> prediction labels
+            val_loss = loss_fn(val_logits, ytn_val_in, weight, wtn_val_in);
+            val_f1 = f1_fn(y_true=ytn_val_in, y_pred=val_pred);
 
         # Print out what's happening
         if (epoch+1) % report_every == 0:
-            print(f"Epoch: {epoch+1} | Loss: {loss.item():.5f}, F1: {f1:.3f} | Test Loss: {test_loss.item():.5f}, Test F1: {test_f1:.3f}")
+            print(f"Epoch: {epoch+1} | Loss: {loss.item():.5f}, F1: {f1:.3f} | Val Loss: {val_loss.item():.5f},",
+                  f"Val F1: {val_f1:.3f}")
+            
+        # --- Early Stopping Check ---
+        early_stopping(val_loss.item(), model_out)
+        if early_stopping.early_stop:
+            print(f"Early stopping triggered at epoch {epoch}. Exiting training loop.")
+            break
 
-    # clean up 
-    del optimizer 
+    # Load the best model saved during training.
+    model_out.load_state_dict(torch.load("checkpoint.pt"))
+
+    # Re-evaluate on training and val sets using the best model.
+    model_out.eval()
+    with torch.inference_mode():
+        # Training metrics
+        best_train_logits = model_out(Xtn_train_in).squeeze()
+        best_train_pred = torch.round(torch.sigmoid(best_train_logits))
+        best_train_loss = loss_fn(best_train_logits, ytn_train_in, weight, wtn_train_in)
+        best_train_f1 = f1_fn(y_true=ytn_train_in, y_pred=best_train_pred)
+
+        # Val metrics
+        best_val_logits = model_out(Xtn_val_in).squeeze()
+        best_val_pred = torch.round(torch.sigmoid(best_val_logits))
+        best_val_loss = loss_fn(best_val_logits, ytn_val_in, weight, wtn_val_in)
+        best_val_f1 = f1_fn(y_true=ytn_val_in, y_pred=best_val_pred)
+
+    # Clean up
+    del optimizer
     gc.collect()
 
-    evals = {"f1_train": f1.item(), "loss_train": loss.item(), "f1_test": test_f1.item(), "loss_test": test_loss.item()}
+    evals = {
+        "loss_train": best_train_loss.item(),
+        "f1_train": best_train_f1.item(),
+        "loss_val": best_val_loss.item(),
+        "f1_val": best_val_f1.item()
+    }
     return model_out, evals
+
 
 
 def kfold_cv(model_in, data_dict_in, k, kwargs_var_in, kwargs_const_in={}, path="results.csv"):
@@ -589,10 +533,10 @@ def kfold_cv(model_in, data_dict_in, k, kwargs_var_in, kwargs_const_in={}, path=
                 temp_data_dict = {
                     "Xtn_train": X_train_fold,
                     "ytn_train": y_train_fold,
-                    "Xtn_test": X_val_fold,
-                    "ytn_test": y_val_fold,
+                    "Xtn_val": X_val_fold,
+                    "ytn_val": y_val_fold,
                     "wtn_train": w_train_fold,
-                    "wtn_test": w_val_fold
+                    "wtn_val": w_val_fold
                 }
 
                 if model_in==full_model:
@@ -602,8 +546,8 @@ def kfold_cv(model_in, data_dict_in, k, kwargs_var_in, kwargs_const_in={}, path=
                 else:
                     raise ValueError("model must be full_model or batch_model")
 
-                fold_losses.append(evals["loss_test"])
-                fold_f1s.append(evals["f1_test"])
+                fold_losses.append(evals["loss_val"])
+                fold_f1s.append(evals["f1_val"])
 
                 fold_end_time = time.time()
                 print(f"fold took {np.round(fold_end_time - fold_start_time)} seconds")
@@ -669,7 +613,7 @@ def post_data(data_dict_in_, model_in, weight: str = None):
             pass
 
     Xdf_to_merge = pd.DataFrame()
-    for d in ["train", "test", "post"]:
+    for d in ["train", "test", "val", "post"]:
         Xdf = data_dict_in["Xdf_" + d].copy()
         Xtn = data_dict_in["Xtn_" + d].to(device)
         ytn = data_dict_in["ytn_" + d].to(device)
@@ -711,124 +655,70 @@ def post_data(data_dict_in_, model_in, weight: str = None):
     data_dict_in["data"] = data_out
     return data_dict_in
 
-# collapse test/train/predicted data by byvar and plot
-def coll_graph(data_dict_in, outvar, byvar, pvar="py"):
-    df_test_post = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test") | (data_dict_in["data"]["data_type"] == "post")]
-    df_train_post = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")]
-
-    coll_test_post = df_test_post.groupby(byvar, as_index=False).agg({
-        pvar: 'mean',
-        f'{outvar}': 'mean'
-    })
-
-    coll_train_post = df_train_post.groupby(byvar, as_index=False).agg({
-        pvar: 'mean',
-        f'{outvar}': 'mean'
-    })
-
-    fig, axs = plt.subplots(1, 3, figsize=(12,4))
-
-    # Plot the first column vs the second column in the first subplot
-    axs[0].plot(coll_test_post[byvar], coll_test_post[pvar], label="predicted")
-    axs[0].plot(coll_test_post[byvar], coll_test_post[f'{outvar}'], label="actual")
-    axs[0].set_title("Test data: Prediction vs actual")
-    axs[0].set_xlabel(byvar)
-    axs[0].legend()
-
-    # Plot the second column vs the third column in the second subplot
-    axs[1].plot(coll_train_post[byvar], coll_train_post[pvar], label="predicted")
-    axs[1].plot(coll_train_post[byvar], coll_train_post[f'{outvar}'], label="actual")
-    axs[1].set_title("Train data: Prediction vs actual")
-    axs[1].set_xlabel(byvar)
-    axs[1].legend()
-
-    # Plot the third column vs the first column in the third subplot
-    axs[2].plot(coll_test_post[byvar],  coll_test_post[pvar], label="test")
-    axs[2].plot(coll_train_post[byvar], coll_train_post[pvar], label="train")
-    axs[2].set_title("Test predictions vs train predictions")
-    axs[2].set_xlabel(byvar)
-    axs[2].legend()
-
-    # add covid date lines if byvar is mo
-    coviddate=pd.to_datetime("2020-03-01")
-    if byvar == "mo":
-        for ax in axs:
-            ax.axvline(x=coviddate, color="red")
-
-    # Adjust layout
-    plt.tight_layout()
-
-    # Return the figure
-    return fig
 
 # collapse test/train/predicted data by mo and plot
 def time_graph(data_dict_in, outvar, pvar="py", smooth=False, diff=False, weight: str = None):
-    df_test_post  = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test")  | (data_dict_in["data"]["data_type"] == "post")]
-    df_train_post = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")]
+    graph_dict = {
+        'df_train_post': data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")],
+        'df_test_post':  data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test")  | (data_dict_in["data"]["data_type"] == "post")],
+        'df_val_post':   data_dict_in["data"][(data_dict_in["data"]["data_type"] == "val")   | (data_dict_in["data"]["data_type"] == "post")]
+    }
 
-    if weight:
-        coll_test_post = df_test_post.groupby("mo", as_index=False).apply(lambda x: pd.Series({
-            pvar:   np.average(x[pvar],   weights=x[weight]),
-            outvar: np.average(x[outvar], weights=x[weight]) }), include_groups=False)
-        coll_train_post = df_train_post.groupby("mo", as_index=False).apply(lambda x: pd.Series({
-            pvar:   np.average(x[pvar],   weights=x[weight]),
-            outvar: np.average(x[outvar], weights=x[weight]), }), include_groups=False)
-    else:
-        coll_test_post = df_test_post.groupby("mo", as_index=False).agg({
-            pvar: 'mean', outvar: 'mean'})
-        coll_train_post = df_train_post.groupby("mo", as_index=False).agg({
-            pvar: 'mean', outvar: 'mean'})
+    for key in ['train','test','val']: 
+        if weight: 
+            graph_dict[f'coll_{key}_post'] = graph_dict[f'df_{key}_post'].groupby("mo", as_index=False).apply(lambda x: pd.Series({
+                pvar:   np.average(x[pvar],   weights=x[weight]),
+                outvar: np.average(x[outvar], weights=x[weight]) }), include_groups=False)
+        else:
+            graph_dict[f'coll_{key}_post'] = graph_dict[f'df_{key}_post'].groupby("mo", as_index=False).agg({pvar: 'mean', outvar: 'mean'})
 
-    coll_test_post["diff"]  = coll_test_post[f'{outvar}']  - coll_test_post[pvar]
-    coll_train_post["diff"] = coll_train_post[f'{outvar}'] - coll_train_post[pvar]
+        graph_dict[f'coll_{key}_post']["diff"] = graph_dict[f'coll_{key}_post'][f'{outvar}'] - graph_dict[f'coll_{key}_post'][pvar]
 
-    # create variables that reflect 12-mo average of py, outvar, and diff
-    if smooth:
-        for col in [pvar, f'{outvar}', "diff"]:
-            coll_test_post[f'{col}'] = coll_test_post[col].rolling(12).mean()
-            coll_train_post[f'{col}'] = coll_train_post[col].rolling(12).mean()
+        if smooth: 
+            for col in [pvar, f'{outvar}', "diff"]:
+                graph_dict[f'coll_{key}_post'][f'{col}'] = graph_dict[f'coll_{key}_post'][col].rolling(12).mean()
 
     fig, axs = plt.subplots(1, 3, figsize=(12,4))
 
     if diff==False:
-        # Plot the first column vs the second column in the first subplot
-        axs[0].plot(coll_test_post["mo"], coll_test_post[pvar], label="predicted")
-        axs[0].plot(coll_test_post["mo"], coll_test_post[f'{outvar}'], label="actual")
-        axs[0].set_title("Test data: Prediction vs actual")
+        # Plot test vs actual
+        axs[0].plot(graph_dict['coll_test_post']["mo"], graph_dict['coll_test_post'][pvar], label="predicted")
+        axs[0].plot(graph_dict['coll_test_post']["mo"], graph_dict['coll_test_post'][f'{outvar}'], label="actual")
+        axs[0].set_title("Testing data: Prediction vs actual")
         axs[0].set_xlabel("mo")
         axs[0].legend()
 
-        # Plot the second column vs the third column in the second subplot
-        axs[1].plot(coll_train_post["mo"], coll_train_post[pvar], label="predicted")
-        axs[1].plot(coll_train_post["mo"], coll_train_post[f'{outvar}'], label="actual")
-        axs[1].set_title("Train data: Prediction vs actual")
+        # Plot val vs actual 
+        axs[1].plot(graph_dict['coll_val_post']["mo"], graph_dict['coll_val_post'][pvar], label="test")
+        axs[1].plot(graph_dict['coll_val_post']["mo"], graph_dict['coll_val_post'][f'{outvar}'], label="train")
+        axs[1].set_title("Validation data: Prediction vs actual")
         axs[1].set_xlabel("mo")
         axs[1].legend()
 
-        # Plot the third column vs the first column in the third subplot
-        axs[2].plot(coll_test_post["mo"],  coll_test_post[pvar], label="test")
-        axs[2].plot(coll_train_post["mo"], coll_train_post[pvar], label="train")
-        axs[2].set_title("Test predictions vs train predictions")
+        # Plot train vs actual 
+        axs[2].plot(graph_dict['coll_train_post']["mo"], graph_dict['coll_train_post'][pvar], label="predicted")
+        axs[2].plot(graph_dict['coll_train_post']["mo"], graph_dict['coll_train_post'][f'{outvar}'], label="actual")
+        axs[2].set_title("Training data: Prediction vs actual")
         axs[2].set_xlabel("mo")
         axs[2].legend()
 
+
     else:
-        # Plot the first column vs the second column in the first subplot
-        axs[0].plot(coll_test_post["mo"], coll_test_post["diff"], label="diff")
-        axs[0].set_title("Test data: Prediction vs actual")
+        # Plot test diff 
+        axs[0].plot(graph_dict['coll_test_post']["mo"], graph_dict['coll_test_post']["diff"], label="diff")
+        axs[0].set_title("Testing data: Difference from actual")
         axs[0].set_xlabel("mo")
         axs[0].legend()
 
-        # Plot the second column vs the third column in the second subplot
-        axs[1].plot(coll_train_post["mo"], coll_train_post["diff"], label="diff")
-        axs[1].set_title("Train data: Prediction vs actual")
+        # Plot val diff 
+        axs[1].plot(graph_dict['coll_val_post']["mo"], graph_dict['coll_val_post']["diff"], label="diff")
+        axs[1].set_title("Train data: Difference from actual")
         axs[1].set_xlabel("mo")
         axs[1].legend()
 
         # Plot the third column vs the first column in the third subplot
-        axs[2].plot(coll_test_post["mo"],  coll_test_post["diff"], label="test diff")
-        axs[2].plot(coll_train_post["mo"],  coll_train_post["diff"], label="train diff")
-        axs[2].set_title("Test predictions vs train predictions")
+        axs[2].plot(graph_dict['coll_train_post']["mo"],  graph_dict['coll_train_post']["diff"], label="test diff")
+        axs[2].set_title("Validation data: Difference from actual")
         axs[2].set_xlabel("mo")
         axs[2].legend()
 
@@ -845,11 +735,8 @@ def time_graph(data_dict_in, outvar, pvar="py", smooth=False, diff=False, weight
 
 
 # collapse test/train/predicted data by mo and plot
-def time_graph_by(data_dict_in, outvar, byvar, pvar="py", test_train = "test", smooth=False, weight: str = None):
-    if test_train == "test":
-        df = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "test") | (data_dict_in["data"]["data_type"] == "post")]
-    else:
-        df = data_dict_in["data"][(data_dict_in["data"]["data_type"] == "train") | (data_dict_in["data"]["data_type"] == "post")]
+def time_graph_by(data_dict_in, outvar, byvar, pvar="py", data_type = "test", smooth=False, weight: str = None):
+    df = data_dict_in["data"][(data_dict_in["data"]["data_type"] == data_type) | (data_dict_in["data"]["data_type"] == "post")]
 
     if weight:
         df_coll = df.groupby(["mo",byvar], as_index=False).apply(lambda x: pd.Series({
@@ -957,3 +844,4 @@ def out_data_boot(data_dict_in, suffix, path, num_boot):
 
 
     
+# %%
